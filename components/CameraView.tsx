@@ -5,10 +5,10 @@ import { analyzeImage } from "@/lib/vision";
 import { saveRecord } from "@/lib/storage";
 
 export interface CameraViewHandle {
-  startCamera: () => void;
+  startCamera: () => Promise<void>;
   stopCamera: () => void;
   capture: () => void;
-  getVideoRef: () => React.RefObject<HTMLVideoElement>;
+  getVideoRef: () => React.RefObject<HTMLVideoElement | null>;
 }
 
 const CameraView = forwardRef<CameraViewHandle>((props, ref) => {

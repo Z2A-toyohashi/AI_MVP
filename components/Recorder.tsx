@@ -9,7 +9,7 @@ import { saveRecord } from "@/lib/storage";
 export interface RecorderHandle {
   startRecording: () => void;
   stopRecording: () => void;
-  setCameraRef: (ref: React.RefObject<HTMLVideoElement>) => void;
+  setCameraRef: (ref: React.RefObject<HTMLVideoElement | null>) => void;
   captureWithAudio: () => Promise<void>;
 }
 
@@ -30,7 +30,7 @@ const Recorder = forwardRef<RecorderHandle>((props, ref) => {
     stopRecording: () => {
       stopContinuousRecording();
     },
-    setCameraRef: (ref: React.RefObject<HTMLVideoElement>) => {
+    setCameraRef: (ref: React.RefObject<HTMLVideoElement | null>) => {
       cameraVideoRef.current = ref.current;
     },
     captureWithAudio: async () => {
