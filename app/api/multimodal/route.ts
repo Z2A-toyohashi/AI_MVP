@@ -1,4 +1,4 @@
-// app/api/vision/route.ts
+// app/api/multimodal/route.ts
 import { NextResponse } from "next/server";
 import OpenAI from "openai";
 
@@ -7,37 +7,40 @@ export async function POST(req: Request) {
     const formData = await req.formData();
 
     const apiKey = formData.get("apiKey") as string | null;
-    const prompt = formData.get("prompt") as string | null;
-    const file = formData.get("file") as File | null;
+    const transcript = formData.get("transcript") as string | null;
+    const imageFile = formData.get("imageFile") as File | null;
 
     if (!apiKey) {
       return NextResponse.json({ error: "APIキーがありません" }, { status: 400 });
     }
-    if (!file) {
+    if (!transcript) {
+      return NextResponse.json({ error: "音声テキストがありません" }, { status: 400 });
+    }
+    if (!imageFile) {
       return NextResponse.json({ error: "画像がありません" }, { status: 400 });
     }
 
     const openai = new OpenAI({ apiKey });
 
     // 画像を base64 に変換
-    const buffer = Buffer.from(await file.arrayBuffer());
+    const buffer = Buffer.from(await imageFile.arrayBuffer());
     const base64Image = buffer.toString("base64");
     const imageUrl = `data:image/jpeg;base64,${base64Image}`;
 
-    // 型エラー回避のため any でラップ
+    // GPT-4 Vision で画像と音声テキストを組み合わせて応答
     const completion = await (openai.chat.completions.create as any)({
       model: "gpt-4o",
       messages: [
         {
           role: "system",
-          content: "あなたは親切で知識豊富なアシスタントです。画像を見て、ユーザーの質問やリクエストに自然で適切な応答をしてください。"
+          content: "あなたは親切で知識豊富なアシスタントです。ユーザーの発言内容と、その時の状況を示す画像を見て、自然で適切な応答をしてください。質問には答え、コメントには共感し、会話を続けるように心がけてください。"
         },
         {
           role: "user",
           content: [
             {
               type: "text",
-              text: prompt || "この画像について教えてください。",
+              text: transcript,
             },
             {
               type: "image_url",
@@ -57,9 +60,9 @@ export async function POST(req: Request) {
 
     return NextResponse.json({ reply });
   } catch (error: any) {
-    console.error("Vision API error:", error);
+    console.error("Multimodal API error:", error);
     return NextResponse.json(
-      { error: error.message || "Vision API failed" },
+      { error: error.message || "Multimodal API failed" },
       { status: 500 }
     );
   }

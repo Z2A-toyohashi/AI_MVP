@@ -1,18 +1,21 @@
-// lib/whisper.ts
+// lib/multimodal.ts
 import { getOpenAIApiKey } from "./settings";
 
-export async function transcribeAudio(audioBlob: Blob): Promise<string> {
+export async function analyzeImageWithAudio(
+  imageBlob: Blob,
+  transcript: string
+): Promise<string> {
   const apiKey = getOpenAIApiKey();
   if (!apiKey) {
     throw new Error("APIキーが設定されていません");
   }
 
   const formData = new FormData();
-  // ファイル名と拡張子を明示的に指定（Whisper APIがサポートする形式）
-  formData.append("file", audioBlob, "audio.webm");
+  formData.append("imageFile", imageBlob);
+  formData.append("transcript", transcript);
   formData.append("apiKey", apiKey);
 
-  const res = await fetch("/api/transcribe", {
+  const res = await fetch("/api/multimodal", {
     method: "POST",
     body: formData,
   });
@@ -23,5 +26,5 @@ export async function transcribeAudio(audioBlob: Blob): Promise<string> {
     throw new Error(data.error);
   }
 
-  return data.text;
+  return data.reply as string;
 }

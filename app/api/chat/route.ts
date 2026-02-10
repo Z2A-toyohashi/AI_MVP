@@ -24,7 +24,7 @@ export async function POST(req: Request) {
     const response = await openai.chat.completions.create({
       model: "gpt-4o-mini",
       messages: [
-        { role: "system", content: "あなたは AI Living Lab のアシスタントです。" },
+        { role: "system", content: "あなたは親切で知識豊富なアシスタントです。ユーザーの発言内容に対して、自然で適切な応答をしてください。質問には答え、コメントには共感し、会話を続けるように心がけてください。" },
         { role: "user", content: message },
       ],
     });
