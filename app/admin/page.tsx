@@ -56,9 +56,14 @@ export default function AdminPage() {
         {/* ヘッダー */}
         <div className="flex justify-between items-center mb-6">
           <h1 className="text-3xl font-bold">管理画面</h1>
-          <Link href="/" className="text-blue-500 hover:underline">
-            ← ホームに戻る
-          </Link>
+          <div className="flex gap-4">
+            <Link href="/admin/analytics" className="text-purple-500 hover:underline">
+              📊 分析ダッシュボード
+            </Link>
+            <Link href="/" className="text-blue-500 hover:underline">
+              ← ホームに戻る
+            </Link>
+          </div>
         </div>
 
         {/* フィルター */}
@@ -106,7 +111,7 @@ export default function AdminPage() {
                 className="bg-white rounded-lg shadow p-6"
               >
                 <div className="flex justify-between items-start mb-4">
-                  <div>
+                  <div className="flex-1">
                     <span className={`inline-block px-3 py-1 rounded text-sm font-semibold ${
                       record.type === 'audio' 
                         ? 'bg-green-100 text-green-800' 
@@ -116,6 +121,9 @@ export default function AdminPage() {
                     </span>
                     <p className="text-sm text-gray-500 mt-2">
                       {new Date(record.timestamp).toLocaleString('ja-JP')}
+                    </p>
+                    <p className="text-xs text-gray-400 mt-1">
+                      ID: {record.id}
                     </p>
                   </div>
                   <button
