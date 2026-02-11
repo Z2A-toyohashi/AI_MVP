@@ -33,27 +33,68 @@ const CameraView = forwardRef<CameraViewHandle>((props, ref) => {
   // カメラ ON/OFF
   const toggleCamera = async () => {
     if (!cameraOn) {
-      // カメラ ON（背面カメラを優先）
-      const stream = await navigator.mediaDevices.getUserMedia({ 
-        video: { facingMode: { ideal: 'environment' } }
-      });
-      streamRef.current = stream;
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream;
-        
-        // videoの準備ができるまで待つ
-        await new Promise<void>((resolve) => {
-          if (videoRef.current) {
-            videoRef.current.onloadedmetadata = () => {
-              console.log('カメラの準備完了');
-              resolve();
-            };
-          } else {
-            resolve();
+      try {
+        // カメラ ON（背面カメラを優先）
+        const stream = await navigator.mediaDevices.getUserMedia({ 
+          video: { 
+            facingMode: { ideal: 'environment' },
+            width: { ideal: 1280 },
+            height: { ideal: 720 }
           }
         });
+        streamRef.current = stream;
+        
+        if (videoRef.current) {
+          videoRef.current.srcObject = stream;
+          
+          // videoの準備ができるまで待つ（モバイル対応強化）
+          await new Promise<void>((resolve, reject) => {
+            if (!videoRef.current) {
+              reject(new Error('videoRef is null'));
+              return;
+            }
+            
+            const video = videoRef.current;
+            
+            // タイムアウト設定（10秒）
+            const timeout = setTimeout(() => {
+              reject(new Error('カメラの準備がタイムアウトしました'));
+            }, 10000);
+            
+            video.onloadedmetadata = () => {
+              clearTimeout(timeout);
+              console.log('カメラのメタデータ読み込み完了');
+              
+              // 実際に映像が流れるまで待つ
+              const checkReady = () => {
+                if (video.readyState >= 2 && video.videoWidth > 0) {
+                  console.log('カメラの準備完了:', {
+                    readyState: video.readyState,
+                    width: video.videoWidth,
+                    height: video.videoHeight
+                  });
+                  resolve();
+                } else {
+                  setTimeout(checkReady, 100);
+                }
+              };
+              checkReady();
+            };
+            
+            video.onerror = (err) => {
+              clearTimeout(timeout);
+              reject(new Error('カメラの読み込みエラー'));
+            };
+          });
+        }
+        setCameraOn(true);
+      } catch (err: any) {
+        console.error('カメラ起動エラー:', err);
+        alert(`カメラの起動に失敗しました: ${err.message}`);
+        // ストリームをクリーンアップ
+        streamRef.current?.getTracks().forEach((t) => t.stop());
+        streamRef.current = null;
       }
-      setCameraOn(true);
     } else {
       // カメラ OFF
       streamRef.current?.getTracks().forEach((t) => t.stop());

@@ -6,28 +6,45 @@ import Recorder, { RecorderHandle } from "../components/Recorder";
 
 export default function Home() {
   const [verifying, setVerifying] = useState(false);
+  const [capturing, setCapturing] = useState(false);
   const cameraRef = useRef<CameraViewHandle>(null);
   const recorderRef = useRef<RecorderHandle>(null);
 
   const startVerification = async () => {
     setVerifying(true);
     
-    // カメラを先に起動
-    await cameraRef.current?.startCamera();
-    
-    // カメラの準備ができるまで少し待つ
-    setTimeout(() => {
+    try {
+      // カメラを先に起動して完全に準備完了まで待つ
+      await cameraRef.current?.startCamera();
+      
+      // カメラの準備ができるまで待つ（モバイル対応）
+      await new Promise(resolve => setTimeout(resolve, 1500));
+      
       const videoRef = cameraRef.current?.getVideoRef();
       if (videoRef && videoRef.current) {
-        console.log('カメラのvideoRefをRecorderに設定');
-        recorderRef.current?.setCameraRef(videoRef);
+        // videoが実際に再生されているか確認
+        const video = videoRef.current;
+        if (video.readyState >= 2 && video.videoWidth > 0) {
+          console.log('カメラ準備完了:', {
+            readyState: video.readyState,
+            width: video.videoWidth,
+            height: video.videoHeight
+          });
+          recorderRef.current?.setCameraRef(videoRef);
+        } else {
+          console.warn('カメラの映像が準備できていません');
+        }
       } else {
         console.warn('カメラのvideoRefが取得できませんでした');
       }
       
       // 録音を開始
       recorderRef.current?.startRecording();
-    }, 1000);
+    } catch (err) {
+      console.error('検証開始エラー:', err);
+      alert('カメラまたはマイクの起動に失敗しました');
+      setVerifying(false);
+    }
   };
 
   const stopVerification = () => {
@@ -42,7 +59,15 @@ export default function Home() {
       alert('先に検証スタートボタンを押してください');
       return;
     }
-    await recorderRef.current?.captureWithAudio();
+    if (capturing) {
+      return; // 既に処理中
+    }
+    setCapturing(true);
+    try {
+      await recorderRef.current?.captureWithAudio();
+    } finally {
+      setCapturing(false);
+    }
   };
 
   return (
@@ -55,11 +80,16 @@ export default function Home() {
       <div className="flex justify-center gap-4">
         <button
           onClick={verifying ? stopVerification : startVerification}
-          className={`px-8 py-4 rounded-lg text-white font-bold text-lg ${
+          className={`px-8 py-4 rounded-lg text-white font-bold text-lg shadow-xl transition-all duration-150 active:scale-90 active:shadow-inner select-none ${
             verifying 
-              ? "bg-red-500 hover:bg-red-600" 
-              : "bg-blue-500 hover:bg-blue-600"
+              ? "bg-red-500 hover:bg-red-600 active:bg-red-700 active:brightness-90" 
+              : "bg-blue-500 hover:bg-blue-600 active:bg-blue-700 active:brightness-90"
           }`}
+          style={{ 
+            touchAction: 'manipulation',
+            WebkitTapHighlightColor: 'transparent',
+            userSelect: 'none'
+          }}
         >
           {verifying ? "🛑 検証終了" : "▶️ 検証スタート"}
         </button>
@@ -68,9 +98,19 @@ export default function Home() {
         {verifying && (
           <button
             onClick={handleCapture}
-            className="px-8 py-4 rounded-lg text-white font-bold text-lg bg-green-500 hover:bg-green-600"
+            disabled={capturing}
+            className={`px-8 py-4 rounded-lg text-white font-bold text-lg shadow-xl transition-all duration-150 active:scale-90 active:shadow-inner active:brightness-90 select-none ${
+              capturing 
+                ? 'bg-gray-400 cursor-not-allowed' 
+                : 'bg-green-500 hover:bg-green-600 active:bg-green-700'
+            }`}
+            style={{ 
+              touchAction: 'manipulation',
+              WebkitTapHighlightColor: 'transparent',
+              userSelect: 'none'
+            }}
           >
-            📸 撮影
+            {capturing ? '⏳ 処理中...' : '📸 撮影'}
           </button>
         )}
       </div>

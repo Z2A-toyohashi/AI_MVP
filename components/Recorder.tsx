@@ -16,6 +16,7 @@ export interface RecorderHandle {
 const Recorder = forwardRef<RecorderHandle>((props, ref) => {
   const [recording, setRecording] = useState(false);
   const [micOn, setMicOn] = useState(false);
+  const [capturing, setCapturing] = useState(false);
 
   const recorderRef = useRef<any>(null);
   const cameraVideoRef = useRef<HTMLVideoElement | null>(null);
@@ -81,49 +82,71 @@ const Recorder = forwardRef<RecorderHandle>((props, ref) => {
     const video = cameraVideoRef.current;
     
     if (!video) {
-      console.log('カメラのvideoRefが設定されていません');
+      console.error('カメラのvideoRefが設定されていません');
       return null;
     }
     
-    if (video.readyState !== video.HAVE_ENOUGH_DATA) {
-      console.log('カメラの準備ができていません');
+    // モバイルでの準備状態を厳密にチェック
+    if (video.readyState < 2) {
+      console.error('カメラの準備ができていません (readyState:', video.readyState, ')');
       return null;
     }
     
     if (video.videoWidth === 0 || video.videoHeight === 0) {
-      console.log('カメラの映像サイズが0です');
+      console.error('カメラの映像サイズが0です');
+      return null;
+    }
+
+    // 映像が実際に流れているか確認（モバイル対応）
+    if (video.paused || video.ended) {
+      console.error('カメラの映像が停止しています');
       return null;
     }
 
     console.log('カメラフレームをキャプチャ中...', {
       width: video.videoWidth,
       height: video.videoHeight,
+      readyState: video.readyState,
+      paused: video.paused
     });
 
     const canvas = document.createElement("canvas");
     canvas.width = video.videoWidth;
     canvas.height = video.videoHeight;
 
-    const ctx = canvas.getContext("2d");
+    const ctx = canvas.getContext("2d", { willReadFrequently: false });
     if (!ctx) {
-      console.log('Canvas contextの取得に失敗');
+      console.error('Canvas contextの取得に失敗');
       return null;
     }
 
+    // 描画前に少し待つ（モバイル対応）
+    await new Promise(resolve => setTimeout(resolve, 100));
+    
     ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
 
-    return new Promise<Blob>((resolve) => {
+    return new Promise<Blob>((resolve, reject) => {
       canvas.toBlob((b) => {
-        if (b) {
+        if (b && b.size > 0) {
           console.log('画像キャプチャ成功。サイズ:', b.size);
+          resolve(b);
+        } else {
+          console.error('画像キャプチャ失敗: Blobが空です');
+          reject(new Error('画像キャプチャに失敗しました'));
         }
-        resolve(b!);
       }, "image/jpeg", 0.95);
     });
   };
 
   // 現在の音声と画像をキャプチャしてAIに送信
   const captureImageWithCurrentAudio = async () => {
+    if (capturing) {
+      console.log('既に撮影処理中です');
+      return;
+    }
+    
+    setCapturing(true);
+    
     try {
       console.log('撮影ボタン押下');
 
@@ -140,11 +163,18 @@ const Recorder = forwardRef<RecorderHandle>((props, ref) => {
       const text = await transcribeAudio(audioBlob);
       console.log('文字起こし完了:', text);
 
-      // カメラのフレームをキャプチャ
-      const imageBlob = await captureFrame();
+      // カメラのフレームをキャプチャ（エラーハンドリング強化）
+      let imageBlob: Blob | null = null;
+      try {
+        imageBlob = await captureFrame();
+      } catch (captureError: any) {
+        console.error('画像キャプチャエラー:', captureError);
+        alert('画像のキャプチャに失敗しました。カメラが正しく起動しているか確認してください。');
+        return;
+      }
 
       if (!imageBlob) {
-        alert('画像のキャプチャに失敗しました');
+        alert('画像のキャプチャに失敗しました。カメラの準備ができていない可能性があります。');
         return;
       }
 
@@ -179,6 +209,8 @@ const Recorder = forwardRef<RecorderHandle>((props, ref) => {
     } catch (err: any) {
       console.error('撮影エラー:', err);
       alert(`エラー: ${err.message}`);
+    } finally {
+      setCapturing(false);
     }
   };
 
@@ -189,6 +221,14 @@ const Recorder = forwardRef<RecorderHandle>((props, ref) => {
         <div className="flex items-center gap-2 text-red-500">
           <div className="w-3 h-3 bg-red-500 rounded-full animate-pulse"></div>
           <span className="text-sm font-semibold">録音中...</span>
+        </div>
+      )}
+      
+      {/* 撮影処理中の表示 */}
+      {capturing && (
+        <div className="flex items-center gap-2 text-green-500">
+          <div className="w-3 h-3 bg-green-500 rounded-full animate-pulse"></div>
+          <span className="text-sm font-semibold">撮影処理中...</span>
         </div>
       )}
     </div>
