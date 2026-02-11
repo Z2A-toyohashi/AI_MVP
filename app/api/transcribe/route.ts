@@ -6,12 +6,12 @@ export async function POST(req: Request) {
     // フロントから送られてくる FormData を取得
     const formData = await req.formData();
 
-    // localStorage から送られてきた API キーを取得
-    const apiKey = formData.get("apiKey") as string | null;
+    // 環境変数から API キーを取得
+    const apiKey = process.env.OPENAI_API_KEY;
     if (!apiKey) {
       return NextResponse.json(
-        { error: "APIキーが送信されていません" },
-        { status: 400 }
+        { error: "OpenAI APIキーが設定されていません" },
+        { status: 500 }
       );
     }
 

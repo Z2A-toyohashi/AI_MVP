@@ -6,12 +6,12 @@ export async function POST(req: Request) {
   try {
     const formData = await req.formData();
 
-    const apiKey = formData.get("apiKey") as string | null;
+    const apiKey = process.env.OPENAI_API_KEY;
     const prompt = formData.get("prompt") as string | null;
     const file = formData.get("file") as File | null;
 
     if (!apiKey) {
-      return NextResponse.json({ error: "APIキーがありません" }, { status: 400 });
+      return NextResponse.json({ error: "OpenAI APIキーが設定されていません" }, { status: 500 });
     }
     if (!file) {
       return NextResponse.json({ error: "画像がありません" }, { status: 400 });

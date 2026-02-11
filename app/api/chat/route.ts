@@ -3,12 +3,14 @@ import OpenAI from "openai";
 
 export async function POST(req: Request) {
   try {
-    const { apiKey, message } = await req.json();
+    const { message } = await req.json();
+
+    const apiKey = process.env.OPENAI_API_KEY;
 
     if (!apiKey) {
       return NextResponse.json(
-        { error: "APIキーが送信されていません" },
-        { status: 400 }
+        { error: "OpenAI APIキーが設定されていません" },
+        { status: 500 }
       );
     }
 

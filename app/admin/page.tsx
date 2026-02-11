@@ -81,6 +81,32 @@ export default function AdminPage() {
     return Math.round(total / audioRecords.length);
   };
 
+  // 総会話時間（文字数から推定: 1文字 = 約0.5秒）
+  const getTotalConversationTime = () => {
+    const audioRecords = records.filter(r => r.type === 'audio' && r.transcript);
+    const totalChars = audioRecords.reduce((sum, r) => sum + (r.transcript?.length || 0), 0);
+    const totalSeconds = totalChars * 0.5;
+    const minutes = Math.floor(totalSeconds / 60);
+    return minutes;
+  };
+
+  // 平均会話時間
+  const getAverageConversationTime = () => {
+    const audioRecords = records.filter(r => r.type === 'audio' && r.transcript);
+    if (audioRecords.length === 0) return 0;
+    const totalMinutes = getTotalConversationTime();
+    return Math.round(totalMinutes / audioRecords.length * 10) / 10;
+  };
+
+  // 最も活発な時間帯
+  const getMostActiveHour = () => {
+    const hourly = getHourlyUsage();
+    const maxCount = Math.max(...hourly);
+    if (maxCount === 0) return '-';
+    const maxHour = hourly.indexOf(maxCount);
+    return `${maxHour}時 (${maxCount}回)`;
+  };
+
   const exportToCSV = () => {
     const headers = ['ID', 'タイプ', '日時', '文字起こし', 'AI応答', 'プロンプト'];
     const rows = records.map(r => [
@@ -116,6 +142,10 @@ export default function AdminPage() {
   const hourlyUsage = getHourlyUsage();
   const dailyUsage = getDailyUsage();
   const avgLength = getAverageLength();
+  const totalConvTime = getTotalConversationTime();
+  const avgConvTime = getAverageConversationTime();
+  const mostActiveHour = getMostActiveHour();
+  const maxHourlyCount = Math.max(...hourlyUsage, 1); // 0除算を防ぐ
 
   return (
     <div className="min-h-screen bg-gray-50 p-6">
@@ -311,7 +341,7 @@ export default function AdminPage() {
             {activeTab === 'analytics' && (
               <>
                 {/* サマリー */}
-                <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
                   <div className="bg-white rounded-lg shadow p-6">
                     <p className="text-sm text-gray-600 mb-1">総記録数</p>
                     <p className="text-3xl font-bold">{records.length}</p>
@@ -331,6 +361,22 @@ export default function AdminPage() {
                   <div className="bg-white rounded-lg shadow p-6">
                     <p className="text-sm text-gray-600 mb-1">平均文字数</p>
                     <p className="text-3xl font-bold text-blue-600">{avgLength}</p>
+                  </div>
+                </div>
+
+                {/* 会話時間の統計 */}
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+                  <div className="bg-white rounded-lg shadow p-6">
+                    <p className="text-sm text-gray-600 mb-1">総会話時間</p>
+                    <p className="text-2xl font-bold text-indigo-600">{totalConvTime}分</p>
+                  </div>
+                  <div className="bg-white rounded-lg shadow p-6">
+                    <p className="text-sm text-gray-600 mb-1">平均会話時間</p>
+                    <p className="text-2xl font-bold text-teal-600">{avgConvTime}分/回</p>
+                  </div>
+                  <div className="bg-white rounded-lg shadow p-6">
+                    <p className="text-sm text-gray-600 mb-1">最も活発な時間帯</p>
+                    <p className="text-2xl font-bold text-orange-600">{mostActiveHour}</p>
                   </div>
                 </div>
 
@@ -356,20 +402,35 @@ export default function AdminPage() {
                 {/* 時間帯別利用状況 */}
                 <div className="bg-white rounded-lg shadow p-6 mb-6">
                   <h2 className="text-xl font-bold mb-4">時間帯別利用状況</h2>
-                  <div className="flex items-end gap-1 h-48">
-                    {hourlyUsage.map((count, hour) => (
-                      <div key={hour} className="flex-1 flex flex-col items-center">
-                        <div
-                          className="w-full bg-blue-500 rounded-t"
-                          style={{
-                            height: `${Math.max(count / Math.max(...hourlyUsage) * 100, 2)}%`,
-                          }}
-                          title={`${hour}時: ${count}回`}
-                        />
-                        <p className="text-xs mt-1">{hour}</p>
-                      </div>
-                    ))}
-                  </div>
+                  {records.length === 0 ? (
+                    <p className="text-gray-500 text-center py-8">データがありません</p>
+                  ) : (
+                    <div className="flex items-end gap-1 h-64 border-b border-l border-gray-300 pl-2 pb-2">
+                      {hourlyUsage.map((count, hour) => {
+                        const height = count > 0 ? (count / maxHourlyCount) * 100 : 0;
+                        return (
+                          <div key={hour} className="flex-1 flex flex-col items-center justify-end h-full">
+                            <div className="relative w-full flex flex-col items-center justify-end" style={{ height: '90%' }}>
+                              {count > 0 && (
+                                <>
+                                  <span className="text-xs font-semibold text-gray-700 mb-1">{count}</span>
+                                  <div
+                                    className="w-full bg-blue-500 rounded-t hover:bg-blue-600 transition-colors cursor-pointer"
+                                    style={{
+                                      height: `${height}%`,
+                                      minHeight: count > 0 ? '20px' : '0',
+                                    }}
+                                    title={`${hour}時: ${count}回`}
+                                  />
+                                </>
+                              )}
+                            </div>
+                            <p className="text-xs mt-2 text-gray-600">{hour}</p>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
                 </div>
 
                 {/* 日別利用状況 */}

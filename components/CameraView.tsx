@@ -12,7 +12,7 @@ export interface CameraViewHandle {
 }
 
 const CameraView = forwardRef<CameraViewHandle>((props, ref) => {
-  const videoRef = useRef<HTMLVideoElement>(null);
+  const videoRef = useRef<HTMLVideoElement | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
 
   const [cameraOn, setCameraOn] = useState(false);
