@@ -16,6 +16,7 @@ export default function Header({ userId, title = '空間' }: HeaderProps) {
   const menuItems = [
     { label: '🏠 空間', path: '/' },
     { label: '💬 AIと1on1', path: '/chat' },
+    { label: '🧪 検証について', path: '/about' },
     { label: '📝 フィードバック', path: '/feedback' },
   ];
 
