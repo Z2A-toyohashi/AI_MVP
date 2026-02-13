@@ -6,13 +6,34 @@ import { detectSpaceState } from '@/lib/ai-logic';
 import AISettings from '@/components/admin/AISettings';
 import MetricsPanel from '@/components/admin/MetricsPanel';
 import PostsLog from '@/components/admin/PostsLog';
+import FeedbackLog from '@/components/admin/FeedbackLog';
+import ChatLog from '@/components/admin/ChatLog';
 
 interface PostWithDetails extends Post {
   reply_count?: number;
 }
 
+interface Feedback {
+  id: string;
+  user_id: string;
+  content: string;
+  created_at: number;
+}
+
+interface ChatMessage {
+  id: string;
+  user_id: string;
+  role: string;
+  content: string;
+  media_url?: string;
+  media_type?: string;
+  created_at: number;
+}
+
 export default function AdminPage() {
   const [posts, setPosts] = useState<PostWithDetails[]>([]);
+  const [feedback, setFeedback] = useState<Feedback[]>([]);
+  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
   const [filter, setFilter] = useState<'all' | 'user' | 'ai'>('all');
   const [loading, setLoading] = useState(true);
   
@@ -57,6 +78,17 @@ export default function AdminPage() {
         aiDensity,
         spaceState,
       });
+
+      // フィードバックも読み込む
+      const feedbackRes = await fetch('/api/feedback');
+      const feedbackData = await feedbackRes.json();
+      setFeedback(feedbackData.feedback || []);
+
+      // チャットログも読み込む
+      const chatRes = await fetch('/api/chat-messages');
+      const chatData = await chatRes.json();
+      setChatMessages(chatData.messages || []);
+
       setLoading(false);
     } catch (error) {
       console.error('Failed to load data:', error);
@@ -86,6 +118,8 @@ export default function AdminPage() {
       <main className="max-w-7xl mx-auto px-4 sm:px-6 py-6 space-y-6 mt-4 sm:mt-6 mb-8">
         <AISettings currentAIDensity={stats.aiDensity} />
         <MetricsPanel stats={stats} />
+        <ChatLog messages={chatMessages} />
+        <FeedbackLog feedback={feedback} />
         <PostsLog 
           posts={posts}
           filter={filter}

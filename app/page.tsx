@@ -7,6 +7,7 @@ import { supabase } from '@/lib/supabase-client';
 import { randomDelay } from '@/lib/utils';
 import PostItem from '@/components/PostItem';
 import PostInput from '@/components/PostInput';
+import Header from '@/components/Header';
 
 export default function HomePage() {
   const [posts, setPosts] = useState<Post[]>([]);
@@ -156,18 +157,7 @@ export default function HomePage() {
   return (
     <div className="min-h-screen bg-gray-50 flex justify-center">
       <div className="w-full max-w-2xl bg-white min-h-screen shadow-lg">
-        {/* ヘッダー */}
-        <header className="border-b-2 border-gray-200 sticky top-0 bg-gradient-to-r from-blue-50 to-purple-50 backdrop-blur-sm z-20 shadow-sm">
-          <div className="px-4 sm:px-6 py-5 sm:py-6">
-            <div className="flex items-center justify-between">
-              <h1 className="text-xl sm:text-2xl font-bold text-gray-900">空間</h1>
-              <div className="flex items-center gap-2 bg-white px-3 py-1.5 rounded-full shadow-sm border border-gray-200">
-                <span className="text-xs sm:text-sm text-gray-500 font-medium">ID:</span>
-                <span className="text-sm sm:text-base font-bold text-gray-900">{userId}</span>
-              </div>
-            </div>
-          </div>
-        </header>
+        <Header userId={userId} title="空間" />
 
         {/* メインコンテンツ */}
         <main className="pb-8">
