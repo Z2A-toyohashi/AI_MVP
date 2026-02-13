@@ -1,126 +1,221 @@
 'use client';
 
-import { useState, useRef } from "react";
-import CameraView, { CameraViewHandle } from "../components/CameraView";
-import Recorder, { RecorderHandle } from "../components/Recorder";
+import { useEffect, useState } from 'react';
+import type { Post } from '@/types';
+import { getUserId } from '@/lib/user';
+import { supabase } from '@/lib/supabase-client';
+import { randomDelay } from '@/lib/utils';
+import PostItem from '@/components/PostItem';
+import PostInput from '@/components/PostInput';
 
-export default function Home() {
-  const [verifying, setVerifying] = useState(false);
-  const [capturing, setCapturing] = useState(false);
-  const cameraRef = useRef<CameraViewHandle>(null);
-  const recorderRef = useRef<RecorderHandle>(null);
+export default function HomePage() {
+  const [posts, setPosts] = useState<Post[]>([]);
+  const [userId, setUserId] = useState<string>('');
+  const [replyTo, setReplyTo] = useState<string | undefined>();
+  const [loading, setLoading] = useState(true);
 
-  const startVerification = async () => {
-    setVerifying(true);
+  useEffect(() => {
+    initializeApp();
     
+    const subscription = supabase
+      .channel('posts')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'posts' }, () => {
+        fetchPosts();
+      })
+      .subscribe();
+
+    return () => {
+      subscription.unsubscribe();
+    };
+  }, []);
+
+  useEffect(() => {
+    const interval = setInterval(checkAIIntervention, 30000);
+    return () => clearInterval(interval);
+  }, [posts]);
+
+  const initializeApp = async () => {
+    const id = getUserId();
+    setUserId(id);
+
+    await fetch('/api/users', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ userId: id }),
+    });
+
+    await fetchPosts();
+    setLoading(false);
+  };
+
+  const fetchPosts = async () => {
     try {
-      // カメラを先に起動して完全に準備完了まで待つ
-      await cameraRef.current?.startCamera();
-      
-      // カメラの準備ができるまで待つ（モバイル対応）
-      await new Promise(resolve => setTimeout(resolve, 1500));
-      
-      const videoRef = cameraRef.current?.getVideoRef();
-      if (videoRef && videoRef.current) {
-        // videoが実際に再生されているか確認
-        const video = videoRef.current;
-        if (video.readyState >= 2 && video.videoWidth > 0) {
-          console.log('カメラ準備完了:', {
-            readyState: video.readyState,
-            width: video.videoWidth,
-            height: video.videoHeight
-          });
-          recorderRef.current?.setCameraRef(videoRef);
-        } else {
-          console.warn('カメラの映像が準備できていません');
-        }
-      } else {
-        console.warn('カメラのvideoRefが取得できませんでした');
+      const res = await fetch('/api/posts');
+      const data = await res.json();
+      if (data.posts) {
+        setPosts(data.posts);
       }
-      
-      // 録音を開始
-      recorderRef.current?.startRecording();
-    } catch (err) {
-      console.error('検証開始エラー:', err);
-      alert('カメラまたはマイクの起動に失敗しました');
-      setVerifying(false);
+    } catch (error) {
+      console.error('Failed to fetch posts:', error);
     }
   };
 
-  const stopVerification = () => {
-    setVerifying(false);
-    // カメラと録音を停止
-    cameraRef.current?.stopCamera();
-    recorderRef.current?.stopRecording();
-  };
+  const handlePost = async (content: string, mediaUrl?: string, type: 'text' | 'voice' | 'image' = 'text') => {
+    await fetch('/api/users', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ userId }),
+    });
 
-  const handleCapture = async () => {
-    if (!verifying) {
-      alert('先に検証スタートボタンを押してください');
-      return;
-    }
-    if (capturing) {
-      return; // 既に処理中
-    }
-    setCapturing(true);
+    const post: Post = {
+      id: `${Date.now()}-${Math.random()}`,
+      content,
+      type,
+      created_at: Date.now(),
+      thread_id: replyTo || null,
+      author_type: 'user',
+      author_id: userId,
+      media_url: mediaUrl || null,
+    };
+
     try {
-      await recorderRef.current?.captureWithAudio();
-    } finally {
-      setCapturing(false);
+      await fetch('/api/posts', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(post),
+      });
+
+      await fetchPosts();
+      setReplyTo(undefined);
+    } catch (error) {
+      console.error('Failed to post:', error);
     }
   };
+
+  const checkAIIntervention = async () => {
+    if (posts.length === 0) return;
+
+    try {
+      const res = await fetch('/api/ai-check', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ posts }),
+      });
+
+      const data = await res.json();
+
+      if (data.shouldPost) {
+        await randomDelay(5, 20);
+
+        const aiUserId = Math.floor(1000 + Math.random() * 9000).toString();
+
+        await fetch('/api/users', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ userId: aiUserId }),
+        });
+
+        const aiPost: Post = {
+          id: `ai-${Date.now()}-${Math.random()}`,
+          content: data.content,
+          type: 'text',
+          created_at: Date.now(),
+          thread_id: data.thread_id || null,
+          author_type: 'ai',
+          author_id: aiUserId,
+          media_url: null,
+        };
+
+        await fetch('/api/posts', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(aiPost),
+        });
+
+        await fetchPosts();
+      }
+    } catch (error) {
+      console.error('AI check failed:', error);
+    }
+  };
+
+  const getReplies = (threadId: string): Post[] => {
+    return posts.filter((p) => p.thread_id === threadId);
+  };
+
+  const topLevelPosts = posts.filter((p) => !p.thread_id);
+
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-white">
+        <div className="w-8 h-8 border-2 border-gray-300 border-t-gray-900 rounded-full animate-spin"></div>
+      </div>
+    );
+  }
 
   return (
-    <div className="p-6 space-y-6 max-w-xl mx-auto">
-      <div className="flex justify-between items-center">
-        <h1 className="text-3xl font-bold">AI Living Lab</h1>
+    <div className="min-h-screen bg-gray-50 flex justify-center">
+      <div className="w-full max-w-2xl bg-white min-h-screen shadow-lg">
+        {/* ヘッダー */}
+        <header className="border-b-2 border-gray-200 sticky top-0 bg-gradient-to-r from-blue-50 to-purple-50 backdrop-blur-sm z-20 shadow-sm">
+          <div className="px-4 sm:px-6 py-5 sm:py-6">
+            <div className="flex items-center justify-between">
+              <h1 className="text-xl sm:text-2xl font-bold text-gray-900">空間</h1>
+              <div className="flex items-center gap-2 bg-white px-3 py-1.5 rounded-full shadow-sm border border-gray-200">
+                <span className="text-xs sm:text-sm text-gray-500 font-medium">ID:</span>
+                <span className="text-sm sm:text-base font-bold text-gray-900">{userId}</span>
+              </div>
+            </div>
+          </div>
+        </header>
+
+        {/* メインコンテンツ */}
+        <main className="pb-8">
+          {/* 投稿入力 */}
+          <div className="border-b-4 border-gray-200 shadow-sm bg-white">
+            <PostInput
+              onPost={handlePost}
+              replyTo={replyTo}
+              onCancel={() => setReplyTo(undefined)}
+              placeholder={replyTo ? '返信を入力...' : 'いま、思ったこと'}
+            />
+          </div>
+
+          {/* タイムライン */}
+          <div className="bg-white">
+            {topLevelPosts.length === 0 ? (
+              <div className="py-20 text-center">
+                <div className="text-gray-300 mb-3">
+                  <svg className="w-16 h-16 mx-auto" fill="currentColor" viewBox="0 0 20 20">
+                    <path fillRule="evenodd" d="M18 10c0 3.866-3.582 7-8 7a8.841 8.841 0 01-4.083-.98L2 17l1.338-3.123C2.493 12.767 2 11.434 2 10c0-3.866 3.582-7 8-7s8 3.134 8 7zM7 9H5v2h2V9zm8 0h-2v2h2V9zM9 9h2v2H9V9z" clipRule="evenodd" />
+                  </svg>
+                </div>
+                <p className="text-gray-400">まだ投稿がありません</p>
+              </div>
+            ) : (
+              topLevelPosts.map((post) => (
+                <PostItem
+                  key={post.id}
+                  post={post}
+                  replies={getReplies(post.id)}
+                  onReply={setReplyTo}
+                  currentUserId={userId}
+                  onDelete={async (postId) => {
+                    try {
+                      await fetch(`/api/posts?id=${postId}`, {
+                        method: 'DELETE',
+                      });
+                      await fetchPosts();
+                    } catch (error) {
+                      console.error('Failed to delete post:', error);
+                    }
+                  }}
+                />
+              ))
+            )}
+          </div>
+        </main>
       </div>
-
-      {/* 検証スタートボタン */}
-      <div className="flex justify-center gap-4">
-        <button
-          onClick={verifying ? stopVerification : startVerification}
-          className={`px-8 py-4 rounded-lg text-white font-bold text-lg shadow-xl transition-all duration-150 active:scale-90 active:shadow-inner select-none ${
-            verifying 
-              ? "bg-red-500 hover:bg-red-600 active:bg-red-700 active:brightness-90" 
-              : "bg-blue-500 hover:bg-blue-600 active:bg-blue-700 active:brightness-90"
-          }`}
-          style={{ 
-            touchAction: 'manipulation',
-            WebkitTapHighlightColor: 'transparent',
-            userSelect: 'none'
-          }}
-        >
-          {verifying ? "🛑 検証終了" : "▶️ 検証スタート"}
-        </button>
-
-        {/* 撮影ボタン */}
-        {verifying && (
-          <button
-            onClick={handleCapture}
-            disabled={capturing}
-            className={`px-8 py-4 rounded-lg text-white font-bold text-lg shadow-xl transition-all duration-150 active:scale-90 active:shadow-inner active:brightness-90 select-none ${
-              capturing 
-                ? 'bg-gray-400 cursor-not-allowed' 
-                : 'bg-green-500 hover:bg-green-600 active:bg-green-700'
-            }`}
-            style={{ 
-              touchAction: 'manipulation',
-              WebkitTapHighlightColor: 'transparent',
-              userSelect: 'none'
-            }}
-          >
-            {capturing ? '⏳ 処理中...' : '📸 撮影'}
-          </button>
-        )}
-      </div>
-
-      {/* カメラ映像 */}
-      <CameraView ref={cameraRef} />
-
-      {/* 音声録音 */}
-      <Recorder ref={recorderRef} />
-
     </div>
   );
 }

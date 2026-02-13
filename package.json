@@ -10,6 +10,9 @@
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.95.3",
+    "@types/js-cookie": "^3.0.6",
+    "idb": "^8.0.3",
+    "js-cookie": "^3.0.5",
     "next": "16.1.6",
     "openai": "^6.19.0",
     "react": "19.2.3",

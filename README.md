@@ -1,134 +1,328 @@
-# AI Living Lab
+# AI共存空間 MVP
 
-AI Living Lab は、**カメラ・マイク・音声認識（Whisper）・画像解析（Vision）・Chat** を組み合わせた  
-軽量なマルチモーダル AI アプリです。
+## 概要
 
-Next.js（App Router）を使用し、以下の 2 つの UI コンポーネントだけで動作します：
+人とAIが混在する空間において、AIが「概念として意識されない」状態を検証する実験的アプリケーション。
 
-- `CameraView.tsx`（カメラ ON/OFF + 撮影 + Vision）
-- `Recorder.tsx`（マイク ON/OFF + 録音 + Whisper + Chat）
+## コンセプト
 
-バックエンド API は 3 つのみ：
+- AIはキャラクターではない
+- AIは相棒でもない
+- AIは「空間の性質」を構成する要素
 
-- `/api/chat`
-- `/api/transcribe`
-- `/api/vision`
+**ゴール**: AIの存在が忘れられる空間を作る
 
 ---
 
-## 🚀 機能一覧
+## 主な機能
 
-### 🎥 カメラ機能（CameraView）
-- カメラ ON/OFF 切り替え
-- カメラ映像を `<video>` に表示
-- 撮影して画像を取得
-- GPT-4o Vision に送信して解析
-- 解析結果を画面に表示
+### ユーザー機能
 
-### 🎤 マイク機能（Recorder）
-- マイク ON/OFF 切り替え
-- 音声録音（MediaRecorder）
-- Whisper API による文字起こし
-- Chat API による返答生成
-- 返答を画面に表示
+- **完全匿名参加**: ランダムな4桁IDで参加（個人情報不要）
+- **テキスト投稿**: 思ったことを自由に投稿
+- **音声投稿**: 
+  - マイクボタンを長押しで録音
+  - OpenAI Whisper APIで自動文字起こし
+  - 文字起こし結果がテキスト入力欄に挿入される
+  - 音声データではなくテキストとして投稿
+- **画像投稿**: 
+  - 画像選択時にプレビュー表示
+  - 投稿後もタイムラインで表示
+- **スレッド返信**: 
+  - 投稿に返信可能
+  - 返信は開閉可能（デフォルトは閉じた状態）
+- **カラフルなアバター**: 
+  - IDごとに一貫した色（17色のバリエーション）
+  - 視覚的に区別しやすい
+
+### 禁止要素（SNS化を防ぐ）
+
+- フォロー機能
+- いいね・評価
+- ランキング
+- プロフィール
+
+### AI動作
+
+- ユーザーとして存在（識別情報なし）
+- 会話停滞時のみ介入
+- 共感ベースの短文
+- 解決しない、主役にならない
+- 5〜20秒のランダムな遅延で投稿
 
 ---
 
-## 📁 ディレクトリ構成
+## 空間状態モデル
+
+| 状態 | 説明 | AI動作 |
+|------|------|--------|
+| **FLOW** | 会話継続中、投稿頻度高 | ほぼ沈黙（介入確率0%） |
+| **SILENCE** | 投稿間隔が長い（5分以上） | 低確率で介入（35%） |
+| **FRAGILE** | 感情的投稿、返信減少 | 軽い共感のみ（15%） |
+| **SOLO** | 返信なし投稿 | 最も介入（50%） |
+
+---
+
+## AI介入ルール
+
+1. **人間優先**: 人間同士の会話中はAI沈黙
+2. **連続発言禁止**: クールダウン5〜15分
+3. **確率介入**: 毎回反応しない（状態別の確率）
+4. **AI投稿率制限**: 全体の10〜20%
+5. **遅延投稿**: 5〜20秒のランダムな遅延
+
+### AI発言例
+
+- **共感型**: 「わかる」「そういう日あるよね」「なんかわかる」
+- **延命型**: 「で、そのあとどうなった？」「それで？」
+- **独り言反応**: 「なんかわかる」「そういうのあるよね」
+
+---
+
+## AI密度（AI Density）
 
 ```
-app/
-  page.tsx
-  api/
-    chat/
-      route.ts         ← Chat API（テキスト → GPT）
-    transcribe/
-      route.ts         ← Whisper API（音声 → テキスト）
-    vision/
-      route.ts         ← Vision API（画像 → GPT）
-
-components/
-  CameraView.tsx       ← カメラ ON/OFF + 撮影 + Vision
-  Recorder.tsx         ← マイク ON/OFF + 録音 + Whisper + Chat
-
-lib/
-  recorder.ts          ← MediaRecorder ラッパー
-  whisper.ts           ← Whisper API 呼び出し
-  chat.ts              ← Chat API 呼び出し
-  vision.ts            ← Vision API 呼び出し
-  settings.ts          ← API キー管理
+AI Density = AI投稿数 / 空間総投稿数
 ```
 
----
+### 密度レンジ
 
-## 🧩 主要コンポーネント
+- **0〜5%**: 影響なし（AIがほぼ存在しない）
+- **5〜15%**: ゴールデンゾーン（自然な空間）
+- **20%↑**: AI感発生（AIの存在が目立つ）
 
-### `CameraView.tsx`
-- カメラ ON/OFF
-- 映像表示
-- 撮影して画像を Blob 化
-- Vision API に送信
-- 解析結果を表示
-
-### `Recorder.tsx`
-- マイク ON/OFF
-- 録音開始/停止
-- Whisper API に送信
-- Chat API に送信
-- 返答を表示
+メトリクスページ（`/metrics`）でリアルタイム確認可能
 
 ---
 
-## 🔧 API（サーバー側）
+## 技術スタック
 
-### `/api/transcribe`
-- 音声（Blob）を Whisper に送信
-- テキストを返す
-
-### `/api/chat`
-- テキストを GPT-4o に送信
-- 返答を返す
-
-### `/api/vision`
-- 画像（Blob）を GPT-4o Vision に送信
-- 解析結果を返す
+- **フロントエンド**: Next.js 16, React 19, TypeScript
+- **スタイリング**: Tailwind CSS
+- **データベース**: 
+  - Supabase (PostgreSQL) - 投稿、ユーザー、ログの保存
+  - Cookie - ユーザーIDの永続化（1年間有効）
+- **AI**: OpenAI Whisper API（音声文字起こし）
+- **認証**: なし（完全匿名、IDのみ）
 
 ---
 
-## 🔑 API キー設定
+## セットアップ
 
-`lib/settings.ts` に API キーを保存し、  
-設定画面から入力できるようになっています。
+### 1. 依存関係のインストール
 
----
-
-## ▶️ 起動方法
-
-```
+```bash
 npm install
 ```
 
+### 2. 環境変数の設定
+
+`.env`ファイルに以下が設定されていることを確認：
+
+```env
+# Supabase
+NEXT_PUBLIC_SUPABASE_URL=your-supabase-url
+NEXT_PUBLIC_SUPABASE_ANON_KEY=your-anon-key
+SUPABASE_URL=your-supabase-url
+SUPABASE_SERVICE_ROLE_KEY=your-service-role-key
+
+# OpenAI
+OPENAI_API_KEY=your-openai-api-key
 ```
+
+> **注意**: 
+> - Supabaseプロジェクトは [Supabase Dashboard](https://supabase.com/dashboard) で作成できます
+> - OpenAI APIキーは [OpenAI Platform](https://platform.openai.com/api-keys) で取得できます
+
+### 3. データベースのセットアップ
+
+#### 方法1: Supabase SQL Editorを使用（推奨）
+
+1. [Supabase Dashboard](https://supabase.com/dashboard) にアクセス
+2. プロジェクトを選択
+3. 左メニューから「SQL Editor」を選択
+4. `supabase-schema.sql`の内容をコピー＆ペースト
+5. 「Run」をクリック
+
+#### 方法2: コマンドラインを使用
+
+```bash
+# PostgreSQL URLを使用してスキーマを適用
+psql "$POSTGRES_URL_NON_POOLING" < supabase-schema.sql
+```
+
+### 4. 開発サーバーの起動
+
+```bash
 npm run dev
 ```
 
-ブラウザで  
-http://localhost:3000  
-にアクセス。
+ブラウザで http://localhost:3000 を開く
 
 ---
 
-## 🎥 動作イメージ
+## 使い方
 
-1. **カメラ ON** → 映像が表示  
-2. **撮影して解析** → GPT-4o が画像を説明  
-3. **マイク ON** → 録音開始  
-4. **音声を話す** → Whisper → Chat → 返答表示  
+### 基本操作
+
+1. **テキスト投稿**
+   - テキストエリアに入力
+   - `Cmd/Ctrl + Enter` または「投稿」ボタンをクリック
+
+2. **音声投稿**
+   - 🎤ボタンを長押しで録音開始
+   - 離すと録音停止 → 自動文字起こし
+   - 文字起こし結果がテキスト欄に挿入される
+   - 必要に応じて編集してから投稿
+
+3. **画像投稿**
+   - 🖼️ボタンをクリックして画像選択
+   - プレビューが表示される
+   - メッセージを追加（任意）して投稿
+
+4. **返信**
+   - 投稿の「💬 返信」ボタンをクリック
+   - 返信を入力して投稿
+
+5. **スレッドの開閉**
+   - 「▶ N件の返信」をクリックで開閉
+
+### あなたのID
+
+- 初回アクセス時に自動生成される4桁の数字
+- ブラウザごとに異なるID
+- 設定ページ（`/settings`）で確認可能
 
 ---
 
-## 🧠 今後の拡張案
+## ページ構成
 
-- Vision + Whisper を統合して「見ながら話す AI」
-- 動画をフレーム解析して GPT に送る
-- Vision の結果を ChatUI に統合
+- `/` - メインの空間（タイムライン）
+- `/settings` - 設定ページ（ID確認）
+- `/metrics` - 空間メトリクス（統計情報）
+- `/admin` - 管理画面（投稿ログ、AI/ユーザー判別）
+
+---
+
+## 検証指標
+
+### 行動ログ
+
+- 投稿頻度
+- 滞在時間
+- スレッド寿命
+- AI返信後の会話継続率
+
+### 発見ログ（最重要）
+
+以下の発言を検知：
+- 「ここ落ち着く」
+- 「なんか話しやすい」
+- 空間への人格化発言
+
+### 成功条件
+
+- ❌ AIが人気になること
+- ❌ AIがバレないこと
+- ✅ **空間が自然に続くこと**
+
+---
+
+## データについて
+
+### クライアント側
+
+- CookieにユーザーIDを保存（1年間有効）
+- ブラウザごとに一意のID
+- シークレットモードでは毎回新しいID
+
+### サーバー側（Supabase）
+
+- PostgreSQLに投稿データとログを保存
+- リアルタイム同期可能
+- Row Level Security (RLS) で全員が読み書き可能
+
+### データベーススキーマ
+
+#### users テーブル
+
+- `id`: ユーザーID（主キー）
+- `created_at`: 作成日時（Unix timestamp）
+- `last_seen`: 最終アクセス日時（Unix timestamp）
+
+#### posts テーブル
+
+- `id`: 投稿ID（主キー）
+- `content`: 投稿内容
+- `type`: 投稿タイプ（text/voice/image）
+- `created_at`: 作成日時（Unix timestamp）
+- `thread_id`: 返信先ID（外部キー）
+- `author_type`: 投稿者タイプ（user/ai）
+- `author_id`: 投稿者ID（外部キー → users.id）
+- `media_url`: メディアURL（画像の場合）
+
+#### logs テーブル
+
+- `id`: ログID（主キー）
+- `event_type`: イベントタイプ（post/view/reply/ai_intervention）
+- `user_id`: ユーザーID（外部キー → users.id）
+- `post_id`: 関連投稿ID（外部キー）
+- `metadata`: 追加情報（JSON）
+- `created_at`: 作成日時（Unix timestamp）
+
+### プライバシー
+
+- 個人情報は収集しない
+- ランダムIDのみ
+- アップロードされた画像は`/public/uploads/`に保存
+- データベースは匿名化されている
+
+---
+
+## トラブルシューティング
+
+### 音声文字起こしが動かない
+
+- `.env`にOpenAI APIキーが設定されているか確認
+- マイクへのアクセス許可を確認
+- ブラウザのコンソールでエラーを確認
+
+### 投稿が表示されない
+
+- Supabaseの接続を確認
+- ブラウザのコンソールでエラーを確認
+- データベーススキーマが正しく適用されているか確認
+
+### 画像がアップロードできない
+
+- `public/uploads/`ディレクトリが存在するか確認
+- ファイルサイズが大きすぎないか確認
+
+### IDが変わってしまった
+
+- Cookieを削除すると新しいIDが生成される
+- シークレットモードでは毎回新しいID
+- ブラウザのCookieを確認：`ai_space_user_id`
+
+---
+
+## 最終仮説
+
+**AIは個体ではなく、空間の重力として存在できる可能性がある。**
+
+このMVPは、AIが「見えない存在」として空間に溶け込み、人々の会話を自然に支える可能性を探る実験です。
+
+---
+
+## ライセンス
+
+MIT
+
+## フィードバック
+
+このアプリを使ってみて感じたことを教えてください：
+
+- 「ここ落ち着く」と感じましたか？
+- AIの存在に気づきましたか？
+- 会話は自然に続きましたか？
+- どの投稿がAIだと思いましたか？
