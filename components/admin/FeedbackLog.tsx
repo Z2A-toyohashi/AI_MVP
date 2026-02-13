@@ -15,7 +15,7 @@ interface FeedbackLogProps {
 
 export default function FeedbackLog({ feedback }: FeedbackLogProps) {
   return (
-    <div className="bg-white rounded-xl border-2 border-orange-200 shadow-lg p-4 sm:p-6">
+    <div className="bg-white rounded-xl border-2 border-indigo-200 shadow-lg p-4 sm:p-6">
       <h2 className="text-lg sm:text-xl font-bold text-gray-800 mb-4 sm:mb-6 flex items-center gap-2">
         <span>💬</span> フィードバック一覧
       </h2>
@@ -29,10 +29,10 @@ export default function FeedbackLog({ feedback }: FeedbackLogProps) {
           feedback.map((item) => (
             <div
               key={item.id}
-              className="bg-gradient-to-br from-orange-50 to-yellow-50 rounded-xl border-2 border-orange-200 p-4 shadow-sm"
+              className="bg-gradient-to-br from-indigo-50 to-blue-50 rounded-xl border-2 border-indigo-200 p-4 shadow-sm"
             >
               <div className="flex items-center justify-between mb-2">
-                <span className="text-xs font-semibold text-orange-600">
+                <span className="text-xs font-semibold text-indigo-600">
                   ID: {item.user_id}
                 </span>
                 <span className="text-xs text-gray-500">

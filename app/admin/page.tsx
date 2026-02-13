@@ -106,9 +106,9 @@ export default function AdminPage() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-50 via-blue-50 to-purple-50">
-      <header className="bg-white border-b-2 border-purple-200 sticky top-0 z-10 shadow-lg">
+      <header className="bg-white border-b-2 border-blue-200 sticky top-0 z-10 shadow-lg">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 py-5 sm:py-6">
-          <h1 className="text-xl sm:text-2xl font-bold bg-gradient-to-r from-purple-600 to-indigo-600 bg-clip-text text-transparent">
+          <h1 className="text-xl sm:text-2xl font-bold bg-gradient-to-r from-blue-600 to-indigo-600 bg-clip-text text-transparent">
             🎛️ 管理画面
           </h1>
           <p className="text-xs sm:text-sm text-gray-600 mt-1">投稿ログ・メトリクス・AI設定</p>

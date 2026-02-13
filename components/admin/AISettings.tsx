@@ -86,7 +86,7 @@ export default function AISettings({ currentAIDensity }: AISettingsProps) {
   };
 
   return (
-    <div className="bg-white rounded-xl border-2 border-purple-200 shadow-lg p-4 sm:p-6">
+    <div className="bg-white rounded-xl border-2 border-blue-200 shadow-lg p-4 sm:p-6">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
         <div>
           <h2 className="text-lg sm:text-xl font-bold text-gray-800 flex items-center gap-2">
@@ -99,8 +99,8 @@ export default function AISettings({ currentAIDensity }: AISettingsProps) {
             onClick={() => setShowPromptEditor(!showPromptEditor)}
             className={`px-4 py-2 rounded-lg transition-all text-sm font-semibold flex-1 sm:flex-none shadow-md ${
               showPromptEditor
-                ? 'bg-purple-600 text-white'
-                : 'bg-purple-100 text-purple-700 hover:bg-purple-200'
+                ? 'bg-blue-600 text-white'
+                : 'bg-blue-100 text-blue-700 hover:bg-blue-200'
             }`}
           >
             📝 プロンプト
@@ -119,7 +119,7 @@ export default function AISettings({ currentAIDensity }: AISettingsProps) {
       </div>
 
       {showPromptEditor && (
-        <div className="bg-gradient-to-br from-purple-50 to-indigo-50 rounded-xl border-2 border-purple-300 p-4 sm:p-6 mb-4">
+        <div className="bg-gradient-to-br from-blue-50 to-indigo-50 rounded-xl border-2 border-blue-300 p-4 sm:p-6 mb-4">
           <label className="block text-sm font-bold text-gray-800 mb-3 flex items-center gap-2">
             <span className="text-lg">💬</span>
             システムプロンプト
@@ -127,7 +127,7 @@ export default function AISettings({ currentAIDensity }: AISettingsProps) {
           <textarea
             value={systemPrompt}
             onChange={(e) => setSystemPrompt(e.target.value)}
-            className="w-full h-48 sm:h-64 px-3 sm:px-4 py-2 sm:py-3 border-2 border-purple-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent text-xs sm:text-sm font-mono shadow-inner bg-white"
+            className="w-full h-48 sm:h-64 px-3 sm:px-4 py-2 sm:py-3 border-2 border-blue-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-xs sm:text-sm font-mono shadow-inner bg-white"
             placeholder="AIの振る舞いを定義するプロンプトを入力..."
           />
           <p className="text-xs text-gray-600 mt-2">💡 短く簡潔な応答を促すプロンプトを設定してください</p>
@@ -239,7 +239,7 @@ export default function AISettings({ currentAIDensity }: AISettingsProps) {
 
       {(showPromptEditor || showAdvancedSettings) && (
         <div className="flex justify-end pt-4 border-t-2 border-gray-200 mt-4">
-          <button onClick={saveAISettings} disabled={isSaving} className="px-8 py-3 bg-gradient-to-r from-purple-600 to-indigo-600 text-white rounded-xl hover:from-purple-700 hover:to-indigo-700 disabled:from-gray-300 disabled:to-gray-300 transition-all font-bold text-sm w-full sm:w-auto shadow-lg hover:shadow-xl transform hover:scale-105 disabled:transform-none">
+          <button onClick={saveAISettings} disabled={isSaving} className="px-8 py-3 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-xl hover:from-blue-700 hover:to-indigo-700 disabled:from-gray-300 disabled:to-gray-300 transition-all font-bold text-sm w-full sm:w-auto shadow-lg hover:shadow-xl transform hover:scale-105 disabled:transform-none">
             {isSaving ? '💾 保存中...' : '💾 すべて保存'}
           </button>
         </div>

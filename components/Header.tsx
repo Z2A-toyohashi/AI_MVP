@@ -20,7 +20,7 @@ export default function Header({ userId, title = '空間' }: HeaderProps) {
   ];
 
   return (
-    <header className="border-b-2 border-gray-200 sticky top-0 bg-gradient-to-r from-blue-50 to-purple-50 backdrop-blur-sm z-20 shadow-sm">
+    <header className="border-b-2 border-gray-200 sticky top-0 bg-gradient-to-r from-blue-50 to-indigo-50 backdrop-blur-sm z-20 shadow-sm">
       <div className="px-4 sm:px-6 py-5 sm:py-6">
         <div className="flex items-center justify-between">
           <h1 className="text-xl sm:text-2xl font-bold text-gray-900">{title}</h1>

@@ -164,7 +164,7 @@ export default function PostInput({
           <img
             src={imagePreview}
             alt="プレビュー"
-            className="max-h-64 rounded-xl border-2 border-purple-200 shadow-md"
+            className="max-h-64 rounded-xl border-2 border-blue-200 shadow-md"
           />
           <button
             onClick={() => {
@@ -197,7 +197,7 @@ export default function PostInput({
             onTouchEnd={stopRecording}
             className={`w-11 h-11 rounded-full flex items-center justify-center transition-all shadow-md ${
               isRecording
-                ? 'bg-red-500 text-white shadow-lg scale-110 ring-4 ring-red-200'
+                ? 'bg-indigo-600 text-white shadow-lg scale-110 ring-4 ring-indigo-200'
                 : 'bg-blue-100 text-blue-600 hover:bg-blue-200 hover:shadow-lg'
             }`}
             title="長押しで録音"
@@ -209,7 +209,7 @@ export default function PostInput({
 
           <button
             onClick={() => fileInputRef.current?.click()}
-            className="w-11 h-11 rounded-full bg-purple-100 text-purple-600 hover:bg-purple-200 flex items-center justify-center transition-all shadow-md hover:shadow-lg"
+            className="w-11 h-11 rounded-full bg-indigo-100 text-indigo-600 hover:bg-indigo-200 flex items-center justify-center transition-all shadow-md hover:shadow-lg"
             title="画像を選択"
           >
             <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
@@ -228,7 +228,7 @@ export default function PostInput({
         <button
           onClick={handleSubmit}
           disabled={(!content.trim() && !imageFile) || isUploading}
-          className="px-10 py-3 bg-blue-600 text-white rounded-full hover:bg-blue-700 disabled:bg-gray-300 disabled:cursor-not-allowed transition-all text-base font-semibold shadow-lg hover:shadow-xl transform hover:scale-105 disabled:transform-none disabled:shadow-md"
+          className="px-10 py-3 bg-blue-600 text-white rounded-full hover:bg-indigo-600 disabled:bg-gray-300 disabled:cursor-not-allowed transition-all text-base font-semibold shadow-lg hover:shadow-xl transform hover:scale-105 disabled:transform-none disabled:shadow-md"
         >
           {isUploading ? '送信中...' : '投稿'}
         </button>

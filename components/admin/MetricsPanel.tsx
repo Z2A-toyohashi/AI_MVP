@@ -47,13 +47,13 @@ export default function MetricsPanel({ stats }: MetricsPanelProps) {
   };
 
   return (
-    <div className="bg-white rounded-xl border-2 border-green-200 shadow-lg p-4 sm:p-6">
+    <div className="bg-white rounded-xl border-2 border-blue-200 shadow-lg p-4 sm:p-6">
       <h2 className="text-lg sm:text-xl font-bold text-gray-800 mb-4 sm:mb-6 flex items-center gap-2">
         <span>📊</span> 空間メトリクス
       </h2>
       
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-6 mb-4 sm:mb-6">
-        <div className="bg-gradient-to-br from-green-50 to-emerald-50 rounded-xl border-2 border-green-300 p-5 sm:p-6 shadow-md">
+        <div className="bg-gradient-to-br from-blue-50 to-indigo-50 rounded-xl border-2 border-blue-300 p-5 sm:p-6 shadow-md">
           <h3 className="text-xs sm:text-sm font-bold text-gray-700 mb-3 sm:mb-4">AI密度</h3>
           <div className="text-center">
             <div className={`text-4xl sm:text-5xl font-bold bg-gradient-to-r ${getDensityColor(stats.aiDensity)} bg-clip-text text-transparent mb-2`}>
@@ -63,7 +63,7 @@ export default function MetricsPanel({ stats }: MetricsPanelProps) {
           </div>
         </div>
 
-        <div className="bg-gradient-to-br from-blue-50 to-indigo-50 rounded-xl border-2 border-blue-300 p-5 sm:p-6 shadow-md">
+        <div className="bg-gradient-to-br from-indigo-50 to-blue-50 rounded-xl border-2 border-indigo-300 p-5 sm:p-6 shadow-md">
           <h3 className="text-xs sm:text-sm font-bold text-gray-700 mb-3 sm:mb-4">空間状態</h3>
           <div className="text-center">
             <div className={`text-3xl sm:text-4xl font-bold bg-gradient-to-r ${getStateColor(stats.spaceState)} bg-clip-text text-transparent mb-2`}>
@@ -83,12 +83,12 @@ export default function MetricsPanel({ stats }: MetricsPanelProps) {
           <div className="text-xl sm:text-2xl font-bold text-blue-600">{stats.userPosts}</div>
           <div className="text-xs text-gray-600 mt-1 font-medium">ユーザー投稿</div>
         </div>
-        <div className="bg-gradient-to-br from-purple-50 to-purple-100 rounded-xl border-2 border-purple-300 p-3 sm:p-4 text-center shadow-sm">
-          <div className="text-xl sm:text-2xl font-bold text-purple-600">{stats.aiPosts}</div>
+        <div className="bg-gradient-to-br from-indigo-50 to-indigo-100 rounded-xl border-2 border-indigo-300 p-3 sm:p-4 text-center shadow-sm">
+          <div className="text-xl sm:text-2xl font-bold text-indigo-600">{stats.aiPosts}</div>
           <div className="text-xs text-gray-600 mt-1 font-medium">AI投稿</div>
         </div>
-        <div className="bg-gradient-to-br from-green-50 to-green-100 rounded-xl border-2 border-green-300 p-3 sm:p-4 text-center shadow-sm">
-          <div className="text-xl sm:text-2xl font-bold text-green-600">{stats.totalUsers}</div>
+        <div className="bg-gradient-to-br from-blue-50 to-blue-100 rounded-xl border-2 border-blue-300 p-3 sm:p-4 text-center shadow-sm">
+          <div className="text-xl sm:text-2xl font-bold text-blue-600">{stats.totalUsers}</div>
           <div className="text-xs text-gray-600 mt-1 font-medium">参加者数</div>
         </div>
       </div>

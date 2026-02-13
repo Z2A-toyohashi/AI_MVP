@@ -50,7 +50,7 @@ export default function FeedbackPage() {
         <Header userId={userId} title="フィードバック" />
 
         <main className="p-6 sm:p-8">
-          <div className="bg-gradient-to-br from-blue-50 to-purple-50 rounded-xl border-2 border-purple-200 p-6 sm:p-8 shadow-lg">
+          <div className="bg-gradient-to-br from-blue-50 to-indigo-50 rounded-xl border-2 border-blue-200 p-6 sm:p-8 shadow-lg">
             <h2 className="text-xl sm:text-2xl font-bold text-gray-900 mb-4">
               📝 感想・フィードバック
             </h2>
@@ -62,21 +62,21 @@ export default function FeedbackPage() {
               value={content}
               onChange={(e) => setContent(e.target.value)}
               placeholder="感想やフィードバックを入力してください..."
-              className="w-full h-64 px-4 py-3 border-2 border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent text-sm resize-none shadow-inner"
+              className="w-full h-64 px-4 py-3 border-2 border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm resize-none shadow-inner"
             />
 
             <div className="flex justify-end mt-4">
               <button
                 onClick={handleSubmit}
                 disabled={!content.trim() || isSubmitting}
-                className="px-8 py-3 bg-gradient-to-r from-purple-600 to-indigo-600 text-white rounded-xl hover:from-purple-700 hover:to-indigo-700 disabled:from-gray-300 disabled:to-gray-300 transition-all font-bold text-sm shadow-lg hover:shadow-xl transform hover:scale-105 disabled:transform-none"
+                className="px-8 py-3 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-xl hover:from-blue-700 hover:to-indigo-700 disabled:from-gray-300 disabled:to-gray-300 transition-all font-bold text-sm shadow-lg hover:shadow-xl transform hover:scale-105 disabled:transform-none"
               >
                 {isSubmitting ? '送信中...' : '送信'}
               </button>
             </div>
 
             {submitted && (
-              <div className="mt-4 bg-green-50 border-2 border-green-300 text-green-700 px-4 py-3 rounded-xl text-sm font-medium">
+              <div className="mt-4 bg-blue-50 border-2 border-blue-300 text-blue-700 px-4 py-3 rounded-xl text-sm font-medium">
                 ✓ フィードバックを送信しました。ありがとうございます！
               </div>
             )}

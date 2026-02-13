@@ -27,7 +27,7 @@ export default function ChatLog({ messages }: ChatLogProps) {
   }, {} as Record<string, ChatMessage[]>);
 
   return (
-    <div className="bg-white rounded-xl border-2 border-green-200 shadow-lg p-4 sm:p-6">
+    <div className="bg-white rounded-xl border-2 border-blue-200 shadow-lg p-4 sm:p-6">
       <h2 className="text-lg sm:text-xl font-bold text-gray-800 mb-4 sm:mb-6 flex items-center gap-2">
         <span>💬</span> 1on1チャットログ
       </h2>
@@ -41,9 +41,9 @@ export default function ChatLog({ messages }: ChatLogProps) {
           {Object.entries(groupedByUser).map(([userId, userMessages]) => (
             <div
               key={userId}
-              className="bg-gradient-to-br from-green-50 to-blue-50 rounded-xl border-2 border-green-200 p-4 shadow-sm"
+              className="bg-gradient-to-br from-blue-50 to-indigo-50 rounded-xl border-2 border-blue-200 p-4 shadow-sm"
             >
-              <div className="flex items-center gap-2 mb-4 pb-2 border-b-2 border-green-300">
+              <div className="flex items-center gap-2 mb-4 pb-2 border-b-2 border-blue-300">
                 <div
                   className="w-8 h-8 rounded-full flex items-center justify-center text-white text-xs font-bold"
                   style={{ backgroundColor: getUserColor(userId) }}

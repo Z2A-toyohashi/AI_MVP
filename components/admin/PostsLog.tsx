@@ -59,8 +59,8 @@ export default function PostsLog({ posts, filter, setFilter, stats }: PostsLogPr
             onClick={() => setFilter('ai')}
             className={`px-4 py-2 rounded-lg font-medium transition-all text-sm shadow-sm ${
               filter === 'ai'
-                ? 'bg-purple-600 text-white shadow-md'
-                : 'bg-white text-gray-700 hover:bg-purple-50 border border-gray-200'
+                ? 'bg-indigo-600 text-white shadow-md'
+                : 'bg-white text-gray-700 hover:bg-indigo-50 border border-gray-200'
             }`}
           >
             🤖 AI ({stats.aiPosts})
@@ -85,7 +85,7 @@ export default function PostsLog({ posts, filter, setFilter, stats }: PostsLogPr
                 <tr key={post.id} className="hover:bg-gray-50">
                   <td className="px-3 sm:px-4 py-2 sm:py-3">
                     {post.author_type === 'ai' ? (
-                      <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-purple-100 text-purple-700">
+                      <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-indigo-100 text-indigo-700">
                         🤖 AI
                       </span>
                     ) : (
