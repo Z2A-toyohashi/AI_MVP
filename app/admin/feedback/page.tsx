@@ -1,28 +1,34 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import AISettings from '@/components/admin/AISettings';
+import FeedbackLog from '@/components/admin/FeedbackLog';
 import AdminHeader from '@/components/admin/AdminHeader';
 
-export default function AdminPage() {
+interface Feedback {
+  id: string;
+  user_id: string;
+  content: string;
+  created_at: number;
+}
+
+export default function FeedbackPage() {
   const [loading, setLoading] = useState(true);
-  const [aiDensity, setAIDensity] = useState(0);
+  const [feedback, setFeedback] = useState<Feedback[]>([]);
 
   useEffect(() => {
-    loadAIDensity();
+    loadData();
+    const interval = setInterval(loadData, 10000);
+    return () => clearInterval(interval);
   }, []);
 
-  const loadAIDensity = async () => {
+  const loadData = async () => {
     try {
-      const res = await fetch('/api/posts');
-      const data = await res.json();
-      const allPosts = data.posts || [];
-      const aiPosts = allPosts.filter((p: any) => p.author_type === 'ai');
-      const density = allPosts.length > 0 ? aiPosts.length / allPosts.length : 0;
-      setAIDensity(density);
+      const feedbackRes = await fetch('/api/feedback');
+      const feedbackData = await feedbackRes.json();
+      setFeedback(feedbackData.feedback || []);
       setLoading(false);
     } catch (error) {
-      console.error('Failed to load AI density:', error);
+      console.error('Failed to load data:', error);
       setLoading(false);
     }
   };
@@ -40,7 +46,7 @@ export default function AdminPage() {
       <AdminHeader />
 
       <main className="max-w-7xl mx-auto px-4 sm:px-6 py-6 mt-4 sm:mt-6 mb-8">
-        <AISettings currentAIDensity={aiDensity} />
+        <FeedbackLog feedback={feedback} />
       </main>
     </div>
   );
