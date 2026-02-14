@@ -184,6 +184,10 @@ export default function HomePage() {
 
   const topLevelPosts = posts.filter((p) => !p.thread_id);
   
+  // AI介入率を計算
+  const aiPosts = posts.filter(p => p.author_type === 'ai');
+  const aiDensity = posts.length > 0 ? (aiPosts.length / posts.length) * 100 : 0;
+  
   console.log('=== Posts Debug ===');
   console.log('Total posts:', posts.length);
   console.log('Top level posts:', topLevelPosts.length);
@@ -203,6 +207,27 @@ export default function HomePage() {
     <div className="min-h-screen bg-gray-50 flex justify-center">
       <div className="w-full max-w-2xl bg-white min-h-screen shadow-lg">
         <Header userId={userId} title="空間" />
+
+        {/* AI介入率表示 */}
+        {posts.length > 0 && (
+          <div className="bg-gradient-to-r from-indigo-50 to-blue-50 border-b border-indigo-200 px-4 py-2">
+            <div className="flex items-center justify-between text-xs">
+              <div className="flex items-center gap-2">
+                <span className="text-gray-600">🤖 AI介入率:</span>
+                <span className="font-bold text-indigo-700">{aiDensity.toFixed(1)}%</span>
+                <span className="text-gray-400">({aiPosts.length}/{posts.length})</span>
+              </div>
+              <div className="flex items-center gap-1">
+                <div className="w-24 h-2 bg-gray-200 rounded-full overflow-hidden">
+                  <div 
+                    className="h-full bg-gradient-to-r from-indigo-400 to-blue-500 transition-all duration-500"
+                    style={{ width: `${Math.min(aiDensity, 100)}%` }}
+                  ></div>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* メインコンテンツ */}
         <main className="pb-8">
