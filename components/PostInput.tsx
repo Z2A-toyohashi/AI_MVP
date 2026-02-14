@@ -1,11 +1,14 @@
 'use client';
 
 import { useState, useRef, KeyboardEvent } from 'react';
+import type { Post } from '@/types';
+import { getUserColor } from '@/lib/utils';
 
 interface PostInputProps {
   onPost: (content: string, mediaUrl?: string, type?: 'text' | 'voice' | 'image') => void;
   placeholder?: string;
   replyTo?: string;
+  replyToPost?: Post;
   onCancel?: () => void;
 }
 
@@ -13,6 +16,7 @@ export default function PostInput({
   onPost,
   placeholder = 'いま、思ったこと',
   replyTo,
+  replyToPost,
   onCancel,
 }: PostInputProps) {
   const [content, setContent] = useState('');
@@ -145,17 +149,31 @@ export default function PostInput({
 
   return (
     <div className="p-5 bg-gray-50/50 border-b-4 border-gray-100">
-      {replyTo && (
-        <div className="mb-3 flex items-center justify-between text-sm bg-blue-50 text-blue-700 px-3 py-2 rounded-lg border border-blue-200">
-          <span className="font-medium">💬 返信中...</span>
-          {onCancel && (
-            <button
-              onClick={onCancel}
-              className="text-blue-400 hover:text-blue-600 transition-colors font-bold"
+      {replyTo && replyToPost && (
+        <div className="mb-3 bg-blue-50 border-2 border-blue-200 rounded-lg p-3">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-xs font-semibold text-blue-700">💬 返信先</span>
+            {onCancel && (
+              <button
+                onClick={onCancel}
+                className="text-blue-400 hover:text-blue-600 transition-colors font-bold text-lg leading-none"
+              >
+                ✕
+              </button>
+            )}
+          </div>
+          <div className="flex gap-2 items-start">
+            <div
+              className="w-6 h-6 rounded-full flex items-center justify-center text-white text-xs font-bold flex-shrink-0"
+              style={{ backgroundColor: getUserColor(replyToPost.author_id) }}
             >
-              ✕
-            </button>
-          )}
+              {replyToPost.author_id.slice(-2)}
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-xs font-semibold text-gray-700">{replyToPost.author_id}</p>
+              <p className="text-xs text-gray-600 line-clamp-2 mt-1">{replyToPost.content}</p>
+            </div>
+          </div>
         </div>
       )}
 

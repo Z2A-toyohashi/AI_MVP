@@ -13,6 +13,7 @@ export default function HomePage() {
   const [posts, setPosts] = useState<Post[]>([]);
   const [userId, setUserId] = useState<string>('');
   const [replyTo, setReplyTo] = useState<string | undefined>();
+  const [replyToPost, setReplyToPost] = useState<Post | undefined>();
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -79,6 +80,12 @@ export default function HomePage() {
       media_url: mediaUrl || null,
     };
 
+    console.log('=== Posting ===');
+    console.log('Reply to:', replyTo);
+    console.log('Reply to post:', replyToPost);
+    console.log('Post object:', post);
+    console.log('===============');
+
     try {
       await fetch('/api/posts', {
         method: 'POST',
@@ -88,9 +95,40 @@ export default function HomePage() {
 
       await fetchPosts();
       setReplyTo(undefined);
+      setReplyToPost(undefined);
     } catch (error) {
       console.error('Failed to post:', error);
     }
+  };
+
+  const handleReply = (threadId: string) => {
+    // threadIdが返信の場合は、その返信が属するスレッドのルート投稿を探す
+    const clickedPost = posts.find(p => p.id === threadId);
+    
+    console.log('=== Reply Debug ===');
+    console.log('Clicked post ID:', threadId);
+    console.log('Clicked post:', clickedPost);
+    
+    if (clickedPost) {
+      // クリックされた投稿が返信の場合は、そのthread_idを使用
+      // そうでなければ、クリックされた投稿自体がルート投稿
+      const rootThreadId = clickedPost.thread_id || clickedPost.id;
+      const rootPost = clickedPost.thread_id 
+        ? posts.find(p => p.id === clickedPost.thread_id)
+        : clickedPost;
+      
+      console.log('Root thread ID:', rootThreadId);
+      console.log('Root post:', rootPost);
+      console.log('==================');
+      
+      setReplyTo(rootThreadId);
+      setReplyToPost(rootPost);
+    }
+  };
+
+  const handleCancelReply = () => {
+    setReplyTo(undefined);
+    setReplyToPost(undefined);
   };
 
   const checkAIIntervention = async () => {
@@ -145,6 +183,13 @@ export default function HomePage() {
   };
 
   const topLevelPosts = posts.filter((p) => !p.thread_id);
+  
+  console.log('=== Posts Debug ===');
+  console.log('Total posts:', posts.length);
+  console.log('Top level posts:', topLevelPosts.length);
+  console.log('Posts with thread_id:', posts.filter(p => p.thread_id).length);
+  console.log('All posts:', posts.map(p => ({ id: p.id, thread_id: p.thread_id, content: p.content.slice(0, 20) })));
+  console.log('==================');
 
   if (loading) {
     return (
@@ -166,7 +211,8 @@ export default function HomePage() {
             <PostInput
               onPost={handlePost}
               replyTo={replyTo}
-              onCancel={() => setReplyTo(undefined)}
+              replyToPost={replyToPost}
+              onCancel={handleCancelReply}
               placeholder={replyTo ? '返信を入力...' : 'いま、思ったこと'}
             />
           </div>
@@ -188,7 +234,7 @@ export default function HomePage() {
                   key={post.id}
                   post={post}
                   replies={getReplies(post.id)}
-                  onReply={setReplyTo}
+                  onReply={handleReply}
                   currentUserId={userId}
                   onDelete={async (postId) => {
                     try {

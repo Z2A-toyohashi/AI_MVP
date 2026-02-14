@@ -147,57 +147,109 @@ export default function PostsPage() {
                     <th className="px-3 sm:px-4 py-2 sm:py-3 text-left text-xs font-semibold text-gray-600">タイプ</th>
                     <th className="px-3 sm:px-4 py-2 sm:py-3 text-left text-xs font-semibold text-gray-600">投稿者ID</th>
                     <th className="px-3 sm:px-4 py-2 sm:py-3 text-left text-xs font-semibold text-gray-600">内容</th>
+                    <th className="px-3 sm:px-4 py-2 sm:py-3 text-left text-xs font-semibold text-gray-600">スレッド</th>
+                    <th className="px-3 sm:px-4 py-2 sm:py-3 text-left text-xs font-semibold text-gray-600">返信先</th>
                     <th className="px-3 sm:px-4 py-2 sm:py-3 text-left text-xs font-semibold text-gray-600">返信数</th>
                     <th className="px-3 sm:px-4 py-2 sm:py-3 text-left text-xs font-semibold text-gray-600">投稿日時</th>
                     <th className="px-3 sm:px-4 py-2 sm:py-3 text-left text-xs font-semibold text-gray-600">操作</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100">
-                  {filteredPosts.map((post) => (
-                    <tr key={post.id} className="hover:bg-gray-50">
-                      <td className="px-3 sm:px-4 py-2 sm:py-3">
-                        {post.author_type === 'ai' ? (
-                          <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-indigo-100 text-indigo-700">
-                            🤖 AI
-                          </span>
-                        ) : (
-                          <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-700">
-                            👤 ユーザー
-                          </span>
-                        )}
-                      </td>
-                      <td className="px-3 sm:px-4 py-2 sm:py-3">
-                        <div className="flex items-center gap-2">
-                          <div
-                            className="w-5 h-5 sm:w-6 sm:h-6 rounded-full flex items-center justify-center text-white text-xs font-bold flex-shrink-0"
-                            style={{ backgroundColor: getUserColor(post.author_id) }}
-                          >
-                            {post.author_id.slice(-2)}
+                  {filteredPosts.map((post) => {
+                    const replyToPost = post.thread_id ? posts.find(p => p.id === post.thread_id) : null;
+                    
+                    // デバッグログ
+                    if (post.thread_id && !replyToPost) {
+                      console.log('返信先が見つからない:', {
+                        postId: post.id,
+                        threadId: post.thread_id,
+                        content: post.content,
+                        allPostIds: posts.map(p => p.id)
+                      });
+                    }
+                    
+                    return (
+                      <tr key={post.id} className={`hover:bg-gray-50 ${post.thread_id ? 'bg-blue-50/30' : ''}`}>
+                        <td className="px-3 sm:px-4 py-2 sm:py-3">
+                          {post.author_type === 'ai' ? (
+                            <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-indigo-100 text-indigo-700">
+                              🤖 AI
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-700">
+                              👤 ユーザー
+                            </span>
+                          )}
+                        </td>
+                        <td className="px-3 sm:px-4 py-2 sm:py-3">
+                          <div className="flex items-center gap-2">
+                            <div
+                              className="w-5 h-5 sm:w-6 sm:h-6 rounded-full flex items-center justify-center text-white text-xs font-bold flex-shrink-0"
+                              style={{ backgroundColor: getUserColor(post.author_id) }}
+                            >
+                              {post.author_id.slice(-2)}
+                            </div>
+                            <span className="text-xs sm:text-sm font-medium text-gray-900 truncate">{post.author_id}</span>
                           </div>
-                          <span className="text-xs sm:text-sm font-medium text-gray-900 truncate">{post.author_id}</span>
-                        </div>
-                      </td>
-                      <td className="px-3 sm:px-4 py-2 sm:py-3">
-                        <p className="text-xs sm:text-sm text-gray-900 line-clamp-2 max-w-md">{post.content}</p>
-                      </td>
-                      <td className="px-3 sm:px-4 py-2 sm:py-3">
-                        <span className="text-xs sm:text-sm text-gray-600">{post.reply_count || 0}</span>
-                      </td>
-                      <td className="px-3 sm:px-4 py-2 sm:py-3">
-                        <div className="text-xs sm:text-sm text-gray-600 whitespace-nowrap">{formatTime(post.created_at)}</div>
-                      </td>
-                      <td className="px-3 sm:px-4 py-2 sm:py-3">
-                        {post.author_type === 'ai' && (
-                          <button
-                            onClick={() => handleDelete(post.id)}
-                            className="text-xs px-3 py-1 bg-red-100 text-red-700 hover:bg-red-200 rounded-lg transition-colors font-medium"
-                          >
-                            削除
-                          </button>
-                        )}
-                      </td>
-                    </tr>
-                  ))}
+                        </td>
+                        <td className="px-3 sm:px-4 py-2 sm:py-3">
+                          <p className="text-xs sm:text-sm text-gray-900 line-clamp-2 max-w-md">{post.content}</p>
+                        </td>
+                        <td className="px-3 sm:px-4 py-2 sm:py-3">
+                          {post.thread_id ? (
+                            <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-700">
+                              💬 返信
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-700">
+                              📝 投稿
+                            </span>
+                          )}
+                        </td>
+                        <td className="px-3 sm:px-4 py-2 sm:py-3">
+                          {post.thread_id ? (
+                            replyToPost ? (
+                              <div className="flex items-center gap-2">
+                                <div
+                                  className="w-4 h-4 rounded-full flex items-center justify-center text-white text-[10px] font-bold flex-shrink-0"
+                                  style={{ backgroundColor: getUserColor(replyToPost.author_id) }}
+                                >
+                                  {replyToPost.author_id.slice(-2)}
+                                </div>
+                                <div className="min-w-0">
+                                  <p className="text-xs text-gray-600 truncate max-w-[150px]">{replyToPost.author_id}</p>
+                                  <p className="text-xs text-gray-400 truncate max-w-[150px]">{replyToPost.content}</p>
+                                </div>
+                              </div>
+                            ) : (
+                              <div className="text-xs text-gray-500">
+                                <span className="font-mono bg-gray-100 px-2 py-1 rounded">ID: {post.thread_id.slice(0, 8)}...</span>
+                                <p className="text-[10px] text-red-500 mt-1">※投稿が削除された可能性</p>
+                              </div>
+                            )
+                          ) : (
+                            <span className="text-xs text-gray-400">-</span>
+                          )}
+                        </td>
+                        <td className="px-3 sm:px-4 py-2 sm:py-3">
+                          <span className="text-xs sm:text-sm text-gray-600">{post.reply_count || 0}</span>
+                        </td>
+                        <td className="px-3 sm:px-4 py-2 sm:py-3">
+                          <div className="text-xs sm:text-sm text-gray-600 whitespace-nowrap">{formatTime(post.created_at)}</div>
+                        </td>
+                        <td className="px-3 sm:px-4 py-2 sm:py-3">
+                          {post.author_type === 'ai' && (
+                            <button
+                              onClick={() => handleDelete(post.id)}
+                              className="text-xs px-3 py-1 bg-red-100 text-red-700 hover:bg-red-200 rounded-lg transition-colors font-medium"
+                            >
+                              削除
+                            </button>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>

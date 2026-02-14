@@ -13,7 +13,7 @@ interface PostItemProps {
 }
 
 export default function PostItem({ post, replies, onReply, currentUserId, onDelete }: PostItemProps) {
-  const [showReplies, setShowReplies] = useState(false);
+  const [showReplies, setShowReplies] = useState(replies.length > 0); // 返信がある場合は自動展開
   const color = getUserColor(post.author_id);
 
   return (
@@ -107,16 +107,28 @@ export default function PostItem({ post, replies, onReply, currentUserId, onDele
                   >
                     {reply.author_id.slice(-2)}
                   </div>
-                  <div className="flex-1 min-w-0 bg-white rounded-lg px-3 py-2 shadow-sm border border-gray-100">
-                    <div className="flex items-center gap-2 mb-1">
-                      <span className="font-semibold text-gray-900 text-sm">
-                        {reply.author_id}
-                      </span>
-                      <span className="text-gray-400 text-xs">{formatTime(reply.created_at)}</span>
+                  <div className="flex-1 min-w-0">
+                    <div className="bg-white rounded-lg px-3 py-2 shadow-sm border border-gray-100">
+                      <div className="flex items-center gap-2 mb-1">
+                        <span className="font-semibold text-gray-900 text-sm">
+                          {reply.author_id}
+                        </span>
+                        <span className="text-gray-400 text-xs">{formatTime(reply.created_at)}</span>
+                      </div>
+                      <p className="text-sm text-gray-900 whitespace-pre-wrap break-words leading-relaxed">
+                        {reply.content}
+                      </p>
                     </div>
-                    <p className="text-sm text-gray-900 whitespace-pre-wrap break-words leading-relaxed">
-                      {reply.content}
-                    </p>
+                    {/* 返信への返信ボタン */}
+                    <button
+                      onClick={() => onReply(reply.id)}
+                      className="text-gray-400 hover:text-blue-600 transition-colors flex items-center gap-1 text-xs font-medium mt-1 ml-1"
+                    >
+                      <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6" />
+                      </svg>
+                      返信
+                    </button>
                   </div>
                 </div>
               ))}

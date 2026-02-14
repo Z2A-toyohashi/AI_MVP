@@ -8,7 +8,11 @@ const openai = new OpenAI({
 export async function generateAIResponseWithGPT(
   systemPrompt: string,
   recentPosts: Post[],
-  targetPost?: Post
+  targetPost?: Post,
+  maxLength: number = 30,
+  temperature: number = 1.0,
+  presencePenalty: number = 0.6,
+  frequencyPenalty: number = 0.6
 ): Promise<string> {
   try {
     // 画像があるかチェック
@@ -24,7 +28,10 @@ export async function generateAIResponseWithGPT(
 
     let userMessage: string;
     const messages: Array<{ role: 'system' | 'user'; content: string | Array<{ type: string; text?: string; image_url?: { url: string } }> }> = [
-      { role: 'system', content: systemPrompt },
+      { 
+        role: 'system', 
+        content: `${systemPrompt}\n\n重要: あなたの返信は、あなた自身の発言のみを含めてください。他のユーザーIDやコロン（:）を含めないでください。自然な会話口調で短く返信してください。` 
+      },
     ];
 
     if (targetPost && hasImage && targetPost.media_url) {
@@ -38,7 +45,7 @@ export async function generateAIResponseWithGPT(
         content: [
           {
             type: 'text',
-            text: `以下の投稿に返信してください：\n\n${targetPost.author_id}: ${targetPost.content || '(画像のみ)'}\n\n最近の会話:\n${context}`,
+            text: `【返信対象】\n${targetPost.author_id}さんの投稿: ${targetPost.content || '(画像のみ)'}\n\n【参考: 最近の会話の流れ】\n${context}\n\n上記の${targetPost.author_id}さんの投稿に対して、自然に返信してください。`,
           },
           {
             type: 'image_url',
@@ -49,8 +56,8 @@ export async function generateAIResponseWithGPT(
     } else {
       // テキストのみの場合
       userMessage = targetPost
-        ? `以下の投稿に返信してください：\n\n${targetPost.author_id}: ${targetPost.content}\n\n最近の会話:\n${context}`
-        : `以下の会話の流れを見て、自然に参加してください:\n\n${context}`;
+        ? `【返信対象】\n${targetPost.author_id}さんの投稿: ${targetPost.content}\n\n【参考: 最近の会話の流れ】\n${context}\n\n上記の${targetPost.author_id}さんの投稿に対して、自然に返信してください。`
+        : `【会話の流れ】\n${context}\n\n上記の会話の流れを見て、自然に参加してください。`;
       
       messages.push({ role: 'user', content: userMessage });
     }
@@ -58,14 +65,19 @@ export async function generateAIResponseWithGPT(
     const response = await openai.chat.completions.create({
       model,
       messages: messages as any,
-      temperature: 0.9,
-      max_tokens: 50,
+      temperature: temperature,
+      max_tokens: 100,
+      presence_penalty: presencePenalty,
+      frequency_penalty: frequencyPenalty,
     });
 
     const content = response.choices[0]?.message?.content?.trim() || 'わかる';
     
-    // 10文字以内に制限
-    return content.slice(0, 10);
+    // ユーザーIDとコロンを除去（例: "1234: " や "AI: " など）
+    const cleanedContent = content.replace(/^\d+:\s*/, '').replace(/^[A-Za-z]+:\s*/, '').trim();
+    
+    // 設定された文字数以内に制限
+    return cleanedContent.slice(0, maxLength);
   } catch (error) {
     console.error('GPT API error:', error);
     // フォールバック

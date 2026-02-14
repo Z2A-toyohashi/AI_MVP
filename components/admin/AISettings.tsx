@@ -23,6 +23,9 @@ export default function AISettings({ currentAIDensity }: AISettingsProps) {
   const [probFragile, setProbFragile] = useState(0.15);
   const [probSolo, setProbSolo] = useState(0.5);
   const [maxResponseLength, setMaxResponseLength] = useState(10);
+  const [gptTemperature, setGptTemperature] = useState(1.0);
+  const [gptPresencePenalty, setGptPresencePenalty] = useState(0.6);
+  const [gptFrequencyPenalty, setGptFrequencyPenalty] = useState(0.6);
 
   useEffect(() => {
     loadAISettings();
@@ -45,6 +48,9 @@ export default function AISettings({ currentAIDensity }: AISettingsProps) {
         setProbFragile(data.settings.prob_fragile || 0.15);
         setProbSolo(data.settings.prob_solo || 0.5);
         setMaxResponseLength(data.settings.max_response_length || 10);
+        setGptTemperature(data.settings.gpt_temperature || 1.0);
+        setGptPresencePenalty(data.settings.gpt_presence_penalty || 0.6);
+        setGptFrequencyPenalty(data.settings.gpt_frequency_penalty || 0.6);
       }
     } catch (error) {
       console.error('Failed to load AI settings:', error);
@@ -70,6 +76,9 @@ export default function AISettings({ currentAIDensity }: AISettingsProps) {
           prob_fragile: probFragile,
           prob_solo: probSolo,
           max_response_length: maxResponseLength,
+          gpt_temperature: gptTemperature,
+          gpt_presence_penalty: gptPresencePenalty,
+          gpt_frequency_penalty: gptFrequencyPenalty,
         }),
       });
 
@@ -177,28 +186,120 @@ export default function AISettings({ currentAIDensity }: AISettingsProps) {
               </div>
             </div>
 
-            {/* 介入確率設定 */}
+            {/* 介入確率設定 - 簡略化 */}
             <div className="bg-white rounded-xl p-5 shadow-md border-2 border-purple-200">
               <h4 className="text-sm font-bold text-gray-800 mb-4 pb-2 border-b-2 border-purple-300 flex items-center gap-2">
-                <span>🎲</span> 介入確率
+                <span>🎲</span> AI介入確率（簡易設定）
               </h4>
               
               <div className="space-y-4">
-                {[
-                  { label: 'FLOW（会話活発）', value: probFlow, setter: setProbFlow, color: 'blue' },
-                  { label: 'SILENCE（静寂）', value: probSilence, setter: setProbSilence, color: 'gray' },
-                  { label: 'FRAGILE（不安定）', value: probFragile, setter: setProbFragile, color: 'yellow' },
-                  { label: 'SOLO（独り言）', value: probSolo, setter: setProbSolo, color: 'purple' },
-                ].map((item) => (
-                  <div key={item.label}>
-                    <label className="block text-xs font-semibold text-gray-700 mb-2">{item.label}</label>
-                    <input type="number" step="0.05" min="0" max="1" value={item.value} onChange={(e) => item.setter(Number(e.target.value))} className="w-full px-3 py-2 border-2 border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-purple-500" />
-                    <div className={`mt-2 bg-${item.color}-200 rounded-full h-3 overflow-hidden shadow-inner`}>
-                      <div className={`bg-gradient-to-r from-${item.color}-400 to-${item.color}-600 h-full transition-all`} style={{ width: `${item.value * 100}%` }}></div>
-                    </div>
-                    <p className="text-xs text-purple-600 font-medium mt-1 bg-purple-50 px-2 py-1 rounded">🎯 {(item.value * 100).toFixed(0)}% で介入</p>
+                <div>
+                  <label className="block text-xs font-semibold text-gray-700 mb-2">全体的な介入頻度</label>
+                  <input 
+                    type="range" 
+                    min="0" 
+                    max="1" 
+                    step="0.1" 
+                    value={probSolo} 
+                    onChange={(e) => {
+                      const val = Number(e.target.value);
+                      setProbSolo(val);
+                      setProbSilence(val * 0.7);
+                      setProbFragile(val * 0.3);
+                      setProbFlow(val * 0.1);
+                    }}
+                    className="w-full h-3 bg-purple-200 rounded-lg appearance-none cursor-pointer"
+                  />
+                  <div className="flex justify-between text-xs text-gray-600 mt-2">
+                    <span>低頻度</span>
+                    <span className="font-bold text-purple-600">{(probSolo * 100).toFixed(0)}%</span>
+                    <span>高頻度</span>
                   </div>
-                ))}
+                  <div className="mt-3 bg-purple-50 rounded-lg p-3 border border-purple-200">
+                    <p className="text-xs text-gray-700 mb-2 font-semibold">📊 自動調整される確率:</p>
+                    <div className="space-y-1 text-xs">
+                      <div className="flex justify-between"><span>SOLO（独り言）:</span><span className="font-mono">{(probSolo * 100).toFixed(0)}%</span></div>
+                      <div className="flex justify-between"><span>SILENCE（静寂）:</span><span className="font-mono">{(probSilence * 100).toFixed(0)}%</span></div>
+                      <div className="flex justify-between"><span>FRAGILE（不安定）:</span><span className="font-mono">{(probFragile * 100).toFixed(0)}%</span></div>
+                      <div className="flex justify-between"><span>FLOW（会話活発）:</span><span className="font-mono">{(probFlow * 100).toFixed(0)}%</span></div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* GPTパラメータ設定 */}
+            <div className="bg-white rounded-xl p-5 shadow-md border-2 border-indigo-200">
+              <h4 className="text-sm font-bold text-gray-800 mb-4 pb-2 border-b-2 border-indigo-300 flex items-center gap-2">
+                <span>🧠</span> GPT応答パラメータ
+              </h4>
+              
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-xs font-semibold text-gray-700 mb-2">Temperature（創造性）</label>
+                  <input 
+                    type="range" 
+                    min="0" 
+                    max="2" 
+                    step="0.1" 
+                    value={gptTemperature} 
+                    onChange={(e) => setGptTemperature(Number(e.target.value))}
+                    className="w-full h-3 bg-indigo-200 rounded-lg appearance-none cursor-pointer"
+                  />
+                  <div className="flex justify-between text-xs text-gray-600 mt-2">
+                    <span>保守的</span>
+                    <span className="font-bold text-indigo-600">{gptTemperature.toFixed(1)}</span>
+                    <span>創造的</span>
+                  </div>
+                  <p className="text-xs text-gray-500 mt-1 bg-gray-50 px-2 py-1 rounded">💡 高いほど多様な応答、低いほど一貫した応答</p>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-gray-700 mb-2">Presence Penalty（話題の多様性）</label>
+                  <input 
+                    type="range" 
+                    min="0" 
+                    max="2" 
+                    step="0.1" 
+                    value={gptPresencePenalty} 
+                    onChange={(e) => setGptPresencePenalty(Number(e.target.value))}
+                    className="w-full h-3 bg-indigo-200 rounded-lg appearance-none cursor-pointer"
+                  />
+                  <div className="flex justify-between text-xs text-gray-600 mt-2">
+                    <span>同じ話題</span>
+                    <span className="font-bold text-indigo-600">{gptPresencePenalty.toFixed(1)}</span>
+                    <span>新しい話題</span>
+                  </div>
+                  <p className="text-xs text-gray-500 mt-1 bg-gray-50 px-2 py-1 rounded">💡 高いほど新しい話題を導入しやすい</p>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-gray-700 mb-2">Frequency Penalty（繰り返し抑制）</label>
+                  <input 
+                    type="range" 
+                    min="0" 
+                    max="2" 
+                    step="0.1" 
+                    value={gptFrequencyPenalty} 
+                    onChange={(e) => setGptFrequencyPenalty(Number(e.target.value))}
+                    className="w-full h-3 bg-indigo-200 rounded-lg appearance-none cursor-pointer"
+                  />
+                  <div className="flex justify-between text-xs text-gray-600 mt-2">
+                    <span>繰り返しOK</span>
+                    <span className="font-bold text-indigo-600">{gptFrequencyPenalty.toFixed(1)}</span>
+                    <span>繰り返し回避</span>
+                  </div>
+                  <p className="text-xs text-gray-500 mt-1 bg-gray-50 px-2 py-1 rounded">💡 高いほど同じ単語の繰り返しを避ける</p>
+                </div>
+
+                <div className="bg-gradient-to-br from-indigo-50 to-purple-50 rounded-lg p-4 border-2 border-indigo-200 mt-4">
+                  <h5 className="text-xs font-bold text-gray-800 mb-2 flex items-center gap-1"><span>💡</span> 推奨設定</h5>
+                  <ul className="text-xs text-gray-600 space-y-1.5">
+                    {['Temperature: 0.8-1.2', 'Presence: 0.5-0.8', 'Frequency: 0.5-0.8'].map((tip) => (
+                      <li key={tip} className="flex items-start gap-2"><span className="text-green-500">✓</span><span>{tip}</span></li>
+                    ))}
+                  </ul>
+                </div>
               </div>
             </div>
 

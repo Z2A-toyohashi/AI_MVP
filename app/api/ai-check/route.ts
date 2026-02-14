@@ -63,18 +63,28 @@ export async function POST(request: NextRequest) {
     let targetPost = undefined;
     
     if (state === 'SOLO') {
-      thread_id = lastPost?.id;
+      // lastPostが返信の場合は、そのthread_idを使用（ルート投稿に返信）
+      // そうでなければ、lastPost自体がルート投稿
+      thread_id = lastPost?.thread_id || lastPost?.id;
       targetPost = lastPost;
     } else if (state === 'FRAGILE' && Math.random() < 0.3) {
-      thread_id = lastPost?.id;
+      thread_id = lastPost?.thread_id || lastPost?.id;
       targetPost = lastPost;
     } else if (state === 'SILENCE' && Math.random() < 0.2) {
-      thread_id = lastPost?.id;
+      thread_id = lastPost?.thread_id || lastPost?.id;
       targetPost = lastPost;
     }
 
     // GPTで応答を生成（画像がある場合はVision APIを使用）
-    const content = await generateAIResponseWithGPT(config.system_prompt, posts, targetPost);
+    const content = await generateAIResponseWithGPT(
+      config.system_prompt, 
+      posts, 
+      targetPost,
+      config.max_response_length || 30,
+      config.gpt_temperature || 1.0,
+      config.gpt_presence_penalty || 0.6,
+      config.gpt_frequency_penalty || 0.6
+    );
     
     lastAIPostTime = Date.now();
 

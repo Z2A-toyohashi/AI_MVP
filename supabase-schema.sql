@@ -44,6 +44,9 @@ CREATE TABLE IF NOT EXISTS ai_settings (
   prob_fragile DECIMAL NOT NULL DEFAULT 0.15,
   prob_solo DECIMAL NOT NULL DEFAULT 0.5,
   max_response_length INTEGER NOT NULL DEFAULT 10,
+  gpt_temperature DECIMAL NOT NULL DEFAULT 1.0,
+  gpt_presence_penalty DECIMAL NOT NULL DEFAULT 0.6,
+  gpt_frequency_penalty DECIMAL NOT NULL DEFAULT 0.6,
   updated_at BIGINT NOT NULL
 );
 
