@@ -40,6 +40,9 @@ export async function PUT(request: NextRequest) {
       'prob_fragile',
       'prob_solo',
       'max_response_length',
+      'gpt_temperature',
+      'gpt_presence_penalty',
+      'gpt_frequency_penalty',
     ];
 
     allowedFields.forEach(field => {

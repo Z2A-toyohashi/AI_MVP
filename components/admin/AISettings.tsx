@@ -60,29 +60,38 @@ export default function AISettings({ currentAIDensity }: AISettingsProps) {
   const saveAISettings = async () => {
     setIsSaving(true);
     try {
+      const payload = {
+        system_prompt: systemPrompt,
+        check_interval: checkInterval,
+        cooldown_min: cooldownMin,
+        cooldown_max: cooldownMax,
+        max_ai_density: maxAIDensity,
+        delay_min: delayMin,
+        delay_max: delayMax,
+        prob_flow: probFlow,
+        prob_silence: probSilence,
+        prob_fragile: probFragile,
+        prob_solo: probSolo,
+        max_response_length: maxResponseLength,
+        gpt_temperature: gptTemperature,
+        gpt_presence_penalty: gptPresencePenalty,
+        gpt_frequency_penalty: gptFrequencyPenalty,
+      };
+
+      console.log('=== Saving AI Settings ===');
+      console.log('Payload:', payload);
+      console.log('System Prompt:', systemPrompt);
+      console.log('=========================');
+
       const res = await fetch('/api/ai-settings', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          system_prompt: systemPrompt,
-          check_interval: checkInterval,
-          cooldown_min: cooldownMin,
-          cooldown_max: cooldownMax,
-          max_ai_density: maxAIDensity,
-          delay_min: delayMin,
-          delay_max: delayMax,
-          prob_flow: probFlow,
-          prob_silence: probSilence,
-          prob_fragile: probFragile,
-          prob_solo: probSolo,
-          max_response_length: maxResponseLength,
-          gpt_temperature: gptTemperature,
-          gpt_presence_penalty: gptPresencePenalty,
-          gpt_frequency_penalty: gptFrequencyPenalty,
-        }),
+        body: JSON.stringify(payload),
       });
 
       if (res.ok) {
+        const data = await res.json();
+        console.log('Save response:', data);
         alert('設定を保存しました');
       } else {
         alert('保存に失敗しました');

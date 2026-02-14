@@ -17,6 +17,11 @@ export async function POST(request: NextRequest) {
       .eq('id', 'default')
       .single();
 
+    console.log('=== AI Settings Debug ===');
+    console.log('Settings from DB:', settings);
+    console.log('System Prompt:', settings?.system_prompt);
+    console.log('========================');
+
     const config = settings || {
       cooldown_min: 300000,
       cooldown_max: 900000,
