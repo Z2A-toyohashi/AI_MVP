@@ -87,20 +87,42 @@ export default function PostInput({
     setContent('');
     setImagePreview(null);
     setImageFile(null);
+    if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
   const handleImageSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
+    
+    console.log('=== Image Select Debug ===');
+    console.log('File selected:', file);
+    console.log('File name:', file?.name);
+    console.log('File size:', file?.size);
+    console.log('File type:', file?.type);
+    console.log('========================');
+    
     if (file) {
       // ファイルサイズチェック（5MB以下）
       if (file.size > 5 * 1024 * 1024) {
         alert('画像サイズは5MB以下にしてください');
+        if (fileInputRef.current) fileInputRef.current.value = '';
+        return;
+      }
+
+      // ファイルタイプチェック
+      if (!file.type.startsWith('image/')) {
+        alert('画像ファイルを選択してください');
+        if (fileInputRef.current) fileInputRef.current.value = '';
         return;
       }
 
       setImageFile(file);
       const reader = new FileReader();
       reader.onload = () => setImagePreview(reader.result as string);
+      reader.onerror = (error) => {
+        console.error('FileReader error:', error);
+        alert('画像の読み込みに失敗しました');
+        if (fileInputRef.current) fileInputRef.current.value = '';
+      };
       reader.readAsDataURL(file);
     }
   };
@@ -203,6 +225,7 @@ export default function PostInput({
             onClick={() => {
               setImagePreview(null);
               setImageFile(null);
+              if (fileInputRef.current) fileInputRef.current.value = '';
             }}
             className="absolute top-2 right-2 bg-black bg-opacity-70 text-white rounded-full w-8 h-8 flex items-center justify-center hover:bg-opacity-90 transition-all shadow-lg"
           >
@@ -252,7 +275,8 @@ export default function PostInput({
           <input
             ref={fileInputRef}
             type="file"
-            accept="image/*"
+            accept="image/*,image/heic,image/heif"
+            capture="environment"
             onChange={handleImageSelect}
             className="hidden"
           />

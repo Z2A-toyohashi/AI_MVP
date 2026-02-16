@@ -14,7 +14,7 @@ interface PostItemProps {
 }
 
 export default function PostItem({ post, replies, onReply, currentUserId, onDelete, onReactionUpdate }: PostItemProps) {
-  const [showReplies, setShowReplies] = useState(replies.length > 0); // 返信がある場合は自動展開
+  const [showReplies, setShowReplies] = useState(false); // デフォルトで閉じる
   const [showReactionPicker, setShowReactionPicker] = useState(false);
   const [reactions, setReactions] = useState<Record<string, { count: number; users: Array<{ id: string; isAI: boolean }>; userReacted: boolean }>>({});
   const color = getUserColor(post.author_id);
