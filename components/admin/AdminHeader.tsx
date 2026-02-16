@@ -45,7 +45,7 @@ export default function AdminHeader() {
             className="fixed inset-0 bg-black bg-opacity-30 z-30"
             onClick={() => setMenuOpen(false)}
           />
-          <div className="absolute right-4 top-[calc(100%+8px)] bg-white rounded-xl shadow-2xl border-2 border-gray-200 overflow-hidden z-40 min-w-[200px]">
+          <div className="absolute right-4 top-[calc(100%+8px)] bg-white rounded-xl shadow-2xl border-2 border-gray-200 overflow-hidden z-40 min-w-[240px]">
             {menuItems.map((item) => (
               <button
                 key={item.path}
@@ -53,7 +53,7 @@ export default function AdminHeader() {
                   router.push(item.path);
                   setMenuOpen(false);
                 }}
-                className={`w-full px-5 py-3 text-left hover:bg-gray-50 transition-colors border-b border-gray-100 last:border-b-0 ${
+                className={`w-full px-6 py-4 text-left text-base hover:bg-gray-50 transition-colors border-b border-gray-100 last:border-b-0 ${
                   pathname === item.path ? 'bg-blue-50 text-blue-600 font-semibold' : 'text-gray-700'
                 }`}
               >
