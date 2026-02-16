@@ -57,12 +57,24 @@ export default function PostInput({
       console.log('File type:', imageFile.type);
 
       try {
-        const res = await fetch('/api/upload', {
+        // Try Supabase upload first (for production)
+        console.log('Attempting Supabase upload...');
+        let res = await fetch('/api/upload-supabase', {
           method: 'POST',
           body: formData,
         });
         
-        console.log('Upload response status:', res.status);
+        console.log('Supabase upload response status:', res.status);
+        
+        // If Supabase fails, fallback to local upload (for development)
+        if (!res.ok) {
+          console.log('Supabase upload failed, trying local upload...');
+          res = await fetch('/api/upload', {
+            method: 'POST',
+            body: formData,
+          });
+          console.log('Local upload response status:', res.status);
+        }
         
         if (!res.ok) {
           const errorData = await res.json();
