@@ -307,7 +307,7 @@ export default function AICharactersPage() {
                       <input
                         type="range"
                         min="0.01"
-                        max="0.20"
+                        max="1.0"
                         step="0.01"
                         value={formData.image_generation_probability}
                         onChange={(e) => setFormData({ ...formData, image_generation_probability: parseFloat(e.target.value) })}
@@ -315,9 +315,17 @@ export default function AICharactersPage() {
                       />
                       <div className="flex justify-between text-xs text-gray-500 mt-1">
                         <span>稀に (1%)</span>
-                        <span>時々 (10%)</span>
-                        <span>頻繁に (20%)</span>
+                        <span>時々 (20%)</span>
+                        <span>頻繁に (50%)</span>
+                        <span>常に (100%)</span>
                       </div>
+                      <p className="text-xs text-gray-500 mt-2">
+                        {formData.image_generation_probability >= 0.5 
+                          ? '⚠️ 高確率設定：コストが高くなります' 
+                          : formData.image_generation_probability >= 0.2
+                          ? '💡 中確率設定：適度なバランス'
+                          : '✅ 低確率設定：コスト効率的'}
+                      </p>
                     </div>
 
                     <div>
