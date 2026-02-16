@@ -1,6 +1,41 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase-client';
 
+export async function GET() {
+  try {
+    // アクティブな人間ユーザー数（1時間以内）
+    const { data: activeUsers, error: activeError } = await supabase
+      .from('users')
+      .select('id', { count: 'exact' })
+      .gte('last_seen', Date.now() - 3600000);
+
+    if (activeError) throw activeError;
+
+    // 全人間ユーザー数
+    const { data: allUsers, error: allError } = await supabase
+      .from('users')
+      .select('id', { count: 'exact' });
+
+    if (allError) throw allError;
+
+    // AIキャラクター数
+    const { data: aiCharacters, error: aiError } = await supabase
+      .from('ai_characters')
+      .select('id', { count: 'exact' });
+
+    if (aiError) throw aiError;
+
+    return NextResponse.json({
+      activeHumans: activeUsers?.length || 0,
+      totalHumans: allUsers?.length || 0,
+      totalAI: aiCharacters?.length || 0,
+    });
+  } catch (error) {
+    console.error('Failed to get user stats:', error);
+    return NextResponse.json({ error: 'Failed to get user stats' }, { status: 500 });
+  }
+}
+
 export async function POST(request: NextRequest) {
   try {
     const { userId } = await request.json();
