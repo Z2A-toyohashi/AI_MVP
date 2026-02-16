@@ -149,6 +149,48 @@ export default function AICharactersPage() {
     }
   };
 
+  const handleTestImageGeneration = async (character: AICharacter) => {
+    if (!character.can_generate_images) {
+      alert('このAIは画像生成が無効です。まず有効化してください。');
+      return;
+    }
+
+    if (!character.image_prompts || character.image_prompts.length === 0) {
+      alert('画像プロンプトが設定されていません。');
+      return;
+    }
+
+    if (!confirm(`${character.name}で画像生成をテストしますか？\n\nコスト: $0.04`)) {
+      return;
+    }
+
+    try {
+      const response = await fetch('/api/generate-image', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ aiCharacterId: character.id }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.details || 'Image generation failed');
+      }
+
+      const data = await response.json();
+      
+      alert(`✅ 画像生成成功！\n\nコメント: ${data.comment}\nシーン: ${data.scene}\n\n画像URLをコンソールに出力しました。`);
+      console.log('Generated Image URL:', data.imageUrl);
+      console.log('Comment:', data.comment);
+      console.log('Scene:', data.scene);
+      
+      // 画像を新しいタブで開く
+      window.open(data.imageUrl, '_blank');
+    } catch (error) {
+      console.error('Image generation test failed:', error);
+      alert(`❌ 画像生成に失敗しました\n\n${error instanceof Error ? error.message : '不明なエラー'}`);
+    }
+  };
+
   if (loading) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-gray-50 via-blue-50 to-indigo-50 flex items-center justify-center">
@@ -405,6 +447,15 @@ export default function AICharactersPage() {
                     </div>
                   </div>
                   <div className="flex gap-2">
+                    {character.can_generate_images && character.image_prompts && character.image_prompts.length > 0 && (
+                      <button
+                        onClick={() => handleTestImageGeneration(character)}
+                        className="px-3 py-1 bg-purple-100 text-purple-700 rounded-lg hover:bg-purple-200 transition-colors text-xs font-semibold"
+                        title="画像生成をテスト"
+                      >
+                        🎨 テスト
+                      </button>
+                    )}
                     <button
                       onClick={() => handleEdit(character)}
                       className="px-3 py-1 bg-blue-100 text-blue-700 rounded-lg hover:bg-blue-200 transition-colors text-xs font-semibold"
