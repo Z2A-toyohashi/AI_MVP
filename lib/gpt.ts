@@ -45,7 +45,7 @@ export async function generateAIResponseWithGPT(
         content: [
           {
             type: 'text',
-            text: `【返信対象】\n${targetPost.author_id}さんの投稿: ${targetPost.content || '(画像のみ)'}\n\n【参考: 最近の会話の流れ】\n${context}\n\n上記の${targetPost.author_id}さんの投稿に対して、自然に返信してください。`,
+            text: `【返信対象】\n${targetPost.author_id}さんの投稿: ${targetPost.content || '(画像のみ)'}\n\n【参考: 最近の会話の流れ】\n${context}\n\n上記の${targetPost.author_id}さんの投稿と画像に対して、自然に返信してください。`,
           },
           {
             type: 'image_url',
@@ -53,11 +53,14 @@ export async function generateAIResponseWithGPT(
           },
         ],
       });
+    } else if (targetPost) {
+      // 返信の場合：特定の投稿に対して返信
+      userMessage = `【返信対象】\n${targetPost.author_id}さんの投稿: ${targetPost.content}\n\n【参考: 最近の会話の流れ】\n${context}\n\n上記の${targetPost.author_id}さんの投稿に対して、自然に返信してください。`;
+      
+      messages.push({ role: 'user', content: userMessage });
     } else {
-      // テキストのみの場合
-      userMessage = targetPost
-        ? `【返信対象】\n${targetPost.author_id}さんの投稿: ${targetPost.content}\n\n【参考: 最近の会話の流れ】\n${context}\n\n上記の${targetPost.author_id}さんの投稿に対して、自然に返信してください。`
-        : `【会話の流れ】\n${context}\n\n上記の会話の流れを見て、自然に参加してください。`;
+      // 新規投稿の場合：新しい話題を提供
+      userMessage = `【会話の流れ】\n${context}\n\n上記の会話とは異なる、新しい話題や視点を提供してください。最近の投稿に直接反応するのではなく、独立した新しいつぶやきをしてください。`;
       
       messages.push({ role: 'user', content: userMessage });
     }

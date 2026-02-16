@@ -78,24 +78,39 @@ export async function POST(request: NextRequest) {
 
     const lastPost = posts[0];
     
-    // 返信先を決定
+    // 返信先を決定（より明確な基準で）
     let thread_id = null;
     let targetPost = undefined;
+    let shouldReply = false;
     
     if (state === 'SOLO') {
-      // lastPostが返信の場合は、そのthread_idを使用（ルート投稿に返信）
-      // そうでなければ、lastPost自体がルート投稿
-      thread_id = lastPost?.thread_id || lastPost?.id;
-      targetPost = lastPost;
-    } else if (state === 'FRAGILE' && Math.random() < 0.3) {
-      thread_id = lastPost?.thread_id || lastPost?.id;
-      targetPost = lastPost;
-    } else if (state === 'SILENCE' && Math.random() < 0.2) {
-      thread_id = lastPost?.thread_id || lastPost?.id;
+      // SOLOの場合は高確率で返信
+      shouldReply = Math.random() < 0.8;
+    } else if (state === 'FRAGILE') {
+      // FRAGILEの場合は中確率で返信
+      shouldReply = Math.random() < 0.4;
+    } else if (state === 'SILENCE') {
+      // SILENCEの場合は低確率で返信（新しい話題を提供）
+      shouldReply = Math.random() < 0.2;
+    } else if (state === 'FLOW') {
+      // FLOWの場合はほぼ返信しない（新しい話題を提供）
+      shouldReply = Math.random() < 0.1;
+    }
+    
+    if (shouldReply && lastPost) {
+      // 返信する場合：lastPostが返信ならルート投稿に、そうでなければlastPostに返信
+      thread_id = lastPost.thread_id || lastPost.id;
       targetPost = lastPost;
     }
+    // shouldReply=falseの場合、thread_id=null で新規投稿（新しい話題）
 
     // GPTで応答を生成（AIキャラクターのプロンプトを使用）
+    console.log('=== AI Response Generation ===');
+    console.log('Should reply:', !!thread_id);
+    console.log('Target post:', targetPost?.content);
+    console.log('Thread ID:', thread_id);
+    console.log('==============================');
+    
     const content = await generateAIResponseWithGPT(
       aiCharacter.system_prompt, 
       posts, 
