@@ -10,6 +10,8 @@ interface AICharacter {
   personality: string;
   system_prompt: string;
   created_at: number;
+  last_post_time?: number;
+  post_frequency?: number;
 }
 
 export default function AICharactersPage() {
@@ -21,6 +23,7 @@ export default function AICharactersPage() {
     name: '',
     personality: '',
     system_prompt: '',
+    post_frequency: 1.0,
   });
 
   useEffect(() => {
@@ -58,6 +61,7 @@ export default function AICharactersPage() {
             name: formData.name,
             personality: formData.personality,
             system_prompt: formData.system_prompt,
+            post_frequency: formData.post_frequency,
           })
           .eq('id', editingId);
 
@@ -71,13 +75,15 @@ export default function AICharactersPage() {
             name: formData.name,
             personality: formData.personality,
             system_prompt: formData.system_prompt,
+            post_frequency: formData.post_frequency,
             created_at: Date.now(),
+            last_post_time: 0,
           }]);
 
         if (error) throw error;
       }
 
-      setFormData({ id: '', name: '', personality: '', system_prompt: '' });
+      setFormData({ id: '', name: '', personality: '', system_prompt: '', post_frequency: 1.0 });
       setEditingId(null);
       await loadCharacters();
       alert('保存しました');
@@ -94,6 +100,7 @@ export default function AICharactersPage() {
       name: character.name,
       personality: character.personality,
       system_prompt: character.system_prompt,
+      post_frequency: character.post_frequency || 1.0,
     });
   };
 
@@ -183,6 +190,31 @@ export default function AICharactersPage() {
                 />
               </div>
 
+              <div>
+                <label className="block text-sm font-semibold text-gray-700 mb-2">
+                  投稿頻度（{formData.post_frequency.toFixed(1)}x）
+                </label>
+                <input
+                  type="range"
+                  min="0.3"
+                  max="3.0"
+                  step="0.1"
+                  value={formData.post_frequency}
+                  onChange={(e) => setFormData({ ...formData, post_frequency: parseFloat(e.target.value) })}
+                  className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer"
+                />
+                <div className="flex justify-between text-xs text-gray-500 mt-1">
+                  <span>控えめ (0.3x)</span>
+                  <span>標準 (1.0x)</span>
+                  <span>活発 (3.0x)</span>
+                </div>
+                <p className="text-xs text-gray-500 mt-2">
+                  {formData.post_frequency < 0.7 ? '寡黙なキャラクター' : 
+                   formData.post_frequency > 1.5 ? 'おしゃべりなキャラクター' : 
+                   '標準的な投稿頻度'}
+                </p>
+              </div>
+
               <div className="flex gap-2">
                 <button
                   onClick={handleSave}
@@ -194,7 +226,7 @@ export default function AICharactersPage() {
                   <button
                     onClick={() => {
                       setEditingId(null);
-                      setFormData({ id: '', name: '', personality: '', system_prompt: '' });
+                      setFormData({ id: '', name: '', personality: '', system_prompt: '', post_frequency: 1.0 });
                     }}
                     className="px-6 py-2 bg-gray-300 text-gray-700 rounded-lg hover:bg-gray-400 transition-colors font-semibold text-sm"
                   >
@@ -213,6 +245,9 @@ export default function AICharactersPage() {
                   <div>
                     <h4 className="text-base font-bold text-gray-900">{character.name}</h4>
                     <p className="text-xs text-gray-500 font-mono">{character.id}</p>
+                    <p className="text-xs text-blue-600 font-semibold mt-1">
+                      投稿頻度: {(character.post_frequency || 1.0).toFixed(1)}x
+                    </p>
                   </div>
                   <div className="flex gap-2">
                     <button

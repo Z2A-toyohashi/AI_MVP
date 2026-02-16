@@ -58,7 +58,9 @@ CREATE TABLE IF NOT EXISTS ai_characters (
   name TEXT NOT NULL,
   personality TEXT NOT NULL,
   system_prompt TEXT NOT NULL,
-  created_at BIGINT NOT NULL
+  created_at BIGINT NOT NULL,
+  last_post_time BIGINT DEFAULT 0,
+  post_frequency FLOAT DEFAULT 1.0
 );
 
 -- リアクションテーブル

@@ -5,8 +5,6 @@ import { generateAIResponseWithGPT } from '@/lib/gpt';
 import { supabase } from '@/lib/supabase-client';
 import { selectRandomAICharacter, shouldAIReact, selectRandomEmoji, getActiveAICharacters } from '@/lib/ai-manager';
 
-let lastAIPostTime = 0;
-
 export async function POST(request: NextRequest) {
   try {
     const { posts }: { posts: Post[] } = await request.json();
@@ -45,18 +43,45 @@ export async function POST(request: NextRequest) {
     
     const userCount = users?.length || 1;
     
-    // AIキャラクターを選択
-    const aiCharacter = await selectRandomAICharacter(userCount);
-    if (!aiCharacter) {
-      return NextResponse.json({ shouldPost: false, reason: 'No AI character available' });
-    }
+    // 全AIキャラクターを取得
+    const { data: allAICharacters } = await supabase
+      .from('ai_characters')
+      .select('*')
+      .order('id');
     
-    // クールダウンチェック（設定値を使用）
-    const now = Date.now();
-    const cooldownTime = config.cooldown_min + Math.random() * (config.cooldown_max - config.cooldown_min);
-    if (now - lastAIPostTime < cooldownTime) {
-      return NextResponse.json({ shouldPost: false });
+    if (!allAICharacters || allAICharacters.length === 0) {
+      return NextResponse.json({ shouldPost: false, reason: 'No AI characters available' });
     }
+
+    // アクティブなAI数を計算（ユーザー数の50%）
+    const activeAICount = Math.max(1, Math.ceil(userCount * 0.5));
+    const activeAIs = allAICharacters.slice(0, Math.min(activeAICount, allAICharacters.length));
+    
+    // 各AIのクールダウンをチェックして、投稿可能なAIを選択
+    const now = Date.now();
+    const eligibleAIs = activeAIs.filter(ai => {
+      const lastPostTime = ai.last_post_time || 0;
+      const postFrequency = ai.post_frequency || 1.0;
+      
+      // 基本クールダウン時間を計算
+      const baseCooldown = config.cooldown_min + Math.random() * (config.cooldown_max - config.cooldown_min);
+      
+      // 投稿頻度で調整（頻度が高いほどクールダウンが短い）
+      const adjustedCooldown = baseCooldown / postFrequency;
+      
+      const timeSinceLastPost = now - lastPostTime;
+      
+      console.log(`AI ${ai.id}: last=${lastPostTime}, freq=${postFrequency}, cooldown=${adjustedCooldown}, elapsed=${timeSinceLastPost}`);
+      
+      return timeSinceLastPost >= adjustedCooldown;
+    });
+
+    if (eligibleAIs.length === 0) {
+      return NextResponse.json({ shouldPost: false, reason: 'All AIs in cooldown' });
+    }
+
+    // ランダムに1つのAIを選択
+    const aiCharacter = eligibleAIs[Math.floor(Math.random() * eligibleAIs.length)];
 
     // AI密度チェック（設定値を使用）
     if (posts.length > 0 && aiPosts.length / posts.length > config.max_ai_density) {
@@ -106,6 +131,7 @@ export async function POST(request: NextRequest) {
 
     // GPTで応答を生成（AIキャラクターのプロンプトを使用）
     console.log('=== AI Response Generation ===');
+    console.log('Selected AI:', aiCharacter.id, aiCharacter.name);
     console.log('Should reply:', !!thread_id);
     console.log('Target post:', targetPost?.content);
     console.log('Thread ID:', thread_id);
@@ -121,7 +147,11 @@ export async function POST(request: NextRequest) {
       config.gpt_frequency_penalty || 0.6
     );
     
-    lastAIPostTime = Date.now();
+    // AIの最終投稿時刻を更新
+    await supabase
+      .from('ai_characters')
+      .update({ last_post_time: now })
+      .eq('id', aiCharacter.id);
 
     // AI介入ログを記録
     await supabase.from('logs').insert([{
@@ -136,6 +166,7 @@ export async function POST(request: NextRequest) {
         has_image: !!targetPost?.media_url,
         probability,
         ai_character: aiCharacter.name,
+        post_frequency: aiCharacter.post_frequency,
       },
       created_at: Date.now(),
     }]);
