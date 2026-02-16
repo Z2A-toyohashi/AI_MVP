@@ -157,12 +157,12 @@ export default function HomePage() {
         const aiPost: Post = {
           id: `ai-${Date.now()}-${Math.random()}`,
           content: data.content,
-          type: 'text',
+          type: data.media_url ? 'image' : 'text',
           created_at: Date.now(),
           thread_id: data.thread_id || null,
           author_type: 'ai',
           author_id: aiUserId,
-          media_url: null,
+          media_url: data.media_url || null,
         };
 
         await fetch('/api/posts', {

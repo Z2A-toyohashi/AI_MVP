@@ -1,9 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import type { Post } from '@/types';
-import { detectSpaceState, shouldAIIntervene } from '@/lib/ai-logic';
+import { detectSpaceState } from '@/lib/ai-logic';
 import { generateAIResponseWithGPT } from '@/lib/gpt';
 import { supabase } from '@/lib/supabase-client';
-import { selectRandomAICharacter, shouldAIReact, selectRandomEmoji, getActiveAICharacters } from '@/lib/ai-manager';
+import { shouldAIReact, selectRandomEmoji, getActiveAICharacters } from '@/lib/ai-manager';
 
 export async function POST(request: NextRequest) {
   try {
@@ -129,23 +129,89 @@ export async function POST(request: NextRequest) {
     }
     // shouldReply=falseの場合、thread_id=null で新規投稿（新しい話題）
 
+    // 画像生成チェック（新規投稿時のみ）
+    let generatedImageUrl: string | undefined;
+    let content: string;
+    
+    if (!thread_id && aiCharacter.can_generate_images) {
+      const shouldGenerateImage = Math.random() < (aiCharacter.image_generation_probability || 0.05);
+      
+      if (shouldGenerateImage) {
+        console.log('=== AI Image Generation Triggered ===');
+        console.log('AI:', aiCharacter.name);
+        
+        try {
+          const imageGenResponse = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'}/api/generate-image`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ aiCharacterId: aiCharacter.id }),
+          });
+          
+          if (imageGenResponse.ok) {
+            const imageData = await imageGenResponse.json();
+            generatedImageUrl = imageData.imageUrl;
+            content = imageData.comment;
+            console.log('Image generated successfully:', generatedImageUrl);
+            console.log('Comment:', content);
+          } else {
+            console.error('Image generation failed, falling back to text');
+            // フォールバック：通常のテキスト投稿
+            content = await generateAIResponseWithGPT(
+              aiCharacter.system_prompt, 
+              posts, 
+              targetPost,
+              config.max_response_length || 30,
+              config.gpt_temperature || 1.0,
+              config.gpt_presence_penalty || 0.6,
+              config.gpt_frequency_penalty || 0.6
+            );
+          }
+        } catch (error) {
+          console.error('Image generation error:', error);
+          // フォールバック：通常のテキスト投稿
+          content = await generateAIResponseWithGPT(
+            aiCharacter.system_prompt, 
+            posts, 
+            targetPost,
+            config.max_response_length || 30,
+            config.gpt_temperature || 1.0,
+            config.gpt_presence_penalty || 0.6,
+            config.gpt_frequency_penalty || 0.6
+          );
+        }
+      } else {
+        // 通常のテキスト投稿
+        content = await generateAIResponseWithGPT(
+          aiCharacter.system_prompt, 
+          posts, 
+          targetPost,
+          config.max_response_length || 30,
+          config.gpt_temperature || 1.0,
+          config.gpt_presence_penalty || 0.6,
+          config.gpt_frequency_penalty || 0.6
+        );
+      }
+    } else {
+      // 返信の場合は通常のテキスト投稿
+      content = await generateAIResponseWithGPT(
+        aiCharacter.system_prompt, 
+        posts, 
+        targetPost,
+        config.max_response_length || 30,
+        config.gpt_temperature || 1.0,
+        config.gpt_presence_penalty || 0.6,
+        config.gpt_frequency_penalty || 0.6
+      );
+    }
+
     // GPTで応答を生成（AIキャラクターのプロンプトを使用）
     console.log('=== AI Response Generation ===');
     console.log('Selected AI:', aiCharacter.id, aiCharacter.name);
     console.log('Should reply:', !!thread_id);
     console.log('Target post:', targetPost?.content);
     console.log('Thread ID:', thread_id);
+    console.log('Has generated image:', !!generatedImageUrl);
     console.log('==============================');
-    
-    const content = await generateAIResponseWithGPT(
-      aiCharacter.system_prompt, 
-      posts, 
-      targetPost,
-      config.max_response_length || 30,
-      config.gpt_temperature || 1.0,
-      config.gpt_presence_penalty || 0.6,
-      config.gpt_frequency_penalty || 0.6
-    );
     
     // AIの最終投稿時刻を更新
     await supabase
@@ -164,6 +230,7 @@ export async function POST(request: NextRequest) {
         is_reply: !!thread_id, 
         used_gpt: true,
         has_image: !!targetPost?.media_url,
+        has_generated_image: !!generatedImageUrl,
         probability,
         ai_character: aiCharacter.name,
         post_frequency: aiCharacter.post_frequency,
@@ -198,6 +265,7 @@ export async function POST(request: NextRequest) {
       content,
       thread_id,
       ai_id: aiCharacter.id,
+      media_url: generatedImageUrl,
     });
   } catch (error) {
     console.error('AI check error:', error);

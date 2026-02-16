@@ -60,7 +60,10 @@ CREATE TABLE IF NOT EXISTS ai_characters (
   system_prompt TEXT NOT NULL,
   created_at BIGINT NOT NULL,
   last_post_time BIGINT DEFAULT 0,
-  post_frequency FLOAT DEFAULT 1.0
+  post_frequency FLOAT DEFAULT 1.0,
+  can_generate_images BOOLEAN DEFAULT false,
+  image_generation_probability FLOAT DEFAULT 0.05,
+  image_prompts TEXT[]
 );
 
 -- リアクションテーブル
