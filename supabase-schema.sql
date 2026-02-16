@@ -63,7 +63,10 @@ CREATE TABLE IF NOT EXISTS ai_characters (
   post_frequency FLOAT DEFAULT 1.0,
   can_generate_images BOOLEAN DEFAULT false,
   image_generation_probability FLOAT DEFAULT 0.05,
-  image_prompts TEXT[]
+  image_prompts TEXT[],
+  can_fetch_news BOOLEAN DEFAULT false,
+  news_fetch_probability FLOAT DEFAULT 0.1,
+  news_topics TEXT[]
 );
 
 -- リアクションテーブル

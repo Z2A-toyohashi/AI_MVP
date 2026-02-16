@@ -129,11 +129,72 @@ export async function POST(request: NextRequest) {
     }
     // shouldReply=falseの場合、thread_id=null で新規投稿（新しい話題）
 
-    // 画像生成チェック（新規投稿時のみ）
+    // ニュース取得チェック（新規投稿時のみ、画像生成より優先）
     let generatedImageUrl: string | undefined;
     let content: string;
+    let isNewsPost = false;
     
-    if (!thread_id && aiCharacter.can_generate_images) {
+    if (!thread_id && aiCharacter.can_fetch_news) {
+      const shouldFetchNews = Math.random() < (aiCharacter.news_fetch_probability || 0.1);
+      
+      if (shouldFetchNews) {
+        console.log('=== AI News Fetch Triggered ===');
+        console.log('AI:', aiCharacter.name);
+        
+        try {
+          const newsResponse = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'}/api/fetch-news`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ aiCharacterId: aiCharacter.id }),
+          });
+          
+          if (newsResponse.ok) {
+            const newsData = await newsResponse.json();
+            content = newsData.comment;
+            isNewsPost = true;
+            console.log('News fetched successfully');
+            console.log('Topic:', newsData.topic);
+            console.log('Comment:', content);
+          } else {
+            console.error('News fetch failed, falling back to normal post');
+            // フォールバック：通常の投稿
+            content = await generateAIResponseWithGPT(
+              aiCharacter.system_prompt, 
+              posts, 
+              targetPost,
+              config.max_response_length || 30,
+              config.gpt_temperature || 1.0,
+              config.gpt_presence_penalty || 0.6,
+              config.gpt_frequency_penalty || 0.6
+            );
+          }
+        } catch (error) {
+          console.error('News fetch error:', error);
+          // フォールバック：通常の投稿
+          content = await generateAIResponseWithGPT(
+            aiCharacter.system_prompt, 
+            posts, 
+            targetPost,
+            config.max_response_length || 30,
+            config.gpt_temperature || 1.0,
+            config.gpt_presence_penalty || 0.6,
+            config.gpt_frequency_penalty || 0.6
+          );
+        }
+      } else {
+        // ニュースも画像も生成しない場合、通常のテキスト投稿
+        content = await generateAIResponseWithGPT(
+          aiCharacter.system_prompt, 
+          posts, 
+          targetPost,
+          config.max_response_length || 30,
+          config.gpt_temperature || 1.0,
+          config.gpt_presence_penalty || 0.6,
+          config.gpt_frequency_penalty || 0.6
+        );
+      }
+    } else if (!thread_id && aiCharacter.can_generate_images) {
+      // ニュース機能がない場合、画像生成をチェック
       const shouldGenerateImage = Math.random() < (aiCharacter.image_generation_probability || 0.05);
       
       if (shouldGenerateImage) {
@@ -211,6 +272,7 @@ export async function POST(request: NextRequest) {
     console.log('Target post:', targetPost?.content);
     console.log('Thread ID:', thread_id);
     console.log('Has generated image:', !!generatedImageUrl);
+    console.log('Is news post:', isNewsPost);
     console.log('==============================');
     
     // AIの最終投稿時刻を更新
@@ -231,6 +293,7 @@ export async function POST(request: NextRequest) {
         used_gpt: true,
         has_image: !!targetPost?.media_url,
         has_generated_image: !!generatedImageUrl,
+        is_news_post: isNewsPost,
         probability,
         ai_character: aiCharacter.name,
         post_frequency: aiCharacter.post_frequency,

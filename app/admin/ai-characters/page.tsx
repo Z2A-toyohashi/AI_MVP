@@ -15,6 +15,9 @@ interface AICharacter {
   can_generate_images?: boolean;
   image_generation_probability?: number;
   image_prompts?: string[];
+  can_fetch_news?: boolean;
+  news_fetch_probability?: number;
+  news_topics?: string[];
 }
 
 export default function AICharactersPage() {
@@ -30,8 +33,12 @@ export default function AICharactersPage() {
     can_generate_images: false,
     image_generation_probability: 0.05,
     image_prompts: [] as string[],
+    can_fetch_news: false,
+    news_fetch_probability: 0.1,
+    news_topics: [] as string[],
   });
   const [newPrompt, setNewPrompt] = useState('');
+  const [newTopic, setNewTopic] = useState('');
 
   useEffect(() => {
     loadCharacters();
@@ -72,6 +79,9 @@ export default function AICharactersPage() {
             can_generate_images: formData.can_generate_images,
             image_generation_probability: formData.image_generation_probability,
             image_prompts: formData.image_prompts,
+            can_fetch_news: formData.can_fetch_news,
+            news_fetch_probability: formData.news_fetch_probability,
+            news_topics: formData.news_topics,
           })
           .eq('id', editingId);
 
@@ -89,6 +99,9 @@ export default function AICharactersPage() {
             can_generate_images: formData.can_generate_images,
             image_generation_probability: formData.image_generation_probability,
             image_prompts: formData.image_prompts,
+            can_fetch_news: formData.can_fetch_news,
+            news_fetch_probability: formData.news_fetch_probability,
+            news_topics: formData.news_topics,
             created_at: Date.now(),
             last_post_time: 0,
           }]);
@@ -105,8 +118,12 @@ export default function AICharactersPage() {
         can_generate_images: false,
         image_generation_probability: 0.05,
         image_prompts: [],
+        can_fetch_news: false,
+        news_fetch_probability: 0.1,
+        news_topics: [],
       });
       setNewPrompt('');
+      setNewTopic('');
       setEditingId(null);
       await loadCharacters();
       alert('保存しました');
@@ -127,8 +144,12 @@ export default function AICharactersPage() {
       can_generate_images: character.can_generate_images || false,
       image_generation_probability: character.image_generation_probability || 0.05,
       image_prompts: character.image_prompts || [],
+      can_fetch_news: character.can_fetch_news || false,
+      news_fetch_probability: character.news_fetch_probability || 0.1,
+      news_topics: character.news_topics || [],
     });
     setNewPrompt('');
+    setNewTopic('');
   };
 
   const handleDelete = async (id: string) => {
@@ -403,6 +424,117 @@ export default function AICharactersPage() {
                 )}
               </div>
 
+              <div className="border-t-2 border-gray-200 pt-4">
+                <div className="flex items-center gap-3 mb-3">
+                  <input
+                    type="checkbox"
+                    id="can_fetch_news"
+                    checked={formData.can_fetch_news}
+                    onChange={(e) => setFormData({ ...formData, can_fetch_news: e.target.checked })}
+                    className="w-5 h-5 text-blue-600 rounded focus:ring-2 focus:ring-blue-500"
+                  />
+                  <label htmlFor="can_fetch_news" className="text-sm font-semibold text-gray-700">
+                    📰 ニュース取得機能を有効化
+                  </label>
+                </div>
+                
+                {formData.can_fetch_news && (
+                  <div className="ml-8 space-y-4">
+                    <div>
+                      <label className="block text-sm font-semibold text-gray-700 mb-2">
+                        ニュース取得確率（{(formData.news_fetch_probability * 100).toFixed(0)}%）
+                      </label>
+                      <input
+                        type="range"
+                        min="0.01"
+                        max="0.5"
+                        step="0.01"
+                        value={formData.news_fetch_probability}
+                        onChange={(e) => setFormData({ ...formData, news_fetch_probability: parseFloat(e.target.value) })}
+                        className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer"
+                      />
+                      <div className="flex justify-between text-xs text-gray-500 mt-1">
+                        <span>稀に (1%)</span>
+                        <span>時々 (15%)</span>
+                        <span>頻繁に (50%)</span>
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-semibold text-gray-700 mb-2">
+                        ニューストピック（興味のある話題）
+                      </label>
+                      <div className="flex gap-2 mb-2">
+                        <input
+                          type="text"
+                          value={newTopic}
+                          onChange={(e) => setNewTopic(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter' && newTopic.trim()) {
+                              setFormData({ 
+                                ...formData, 
+                                news_topics: [...formData.news_topics, newTopic.trim()] 
+                              });
+                              setNewTopic('');
+                            }
+                          }}
+                          className="flex-1 px-3 py-2 border-2 border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                          placeholder="例: テクノロジー ニュース"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (newTopic.trim()) {
+                              setFormData({ 
+                                ...formData, 
+                                news_topics: [...formData.news_topics, newTopic.trim()] 
+                              });
+                              setNewTopic('');
+                            }
+                          }}
+                          className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 text-sm font-semibold"
+                        >
+                          追加
+                        </button>
+                      </div>
+                      <p className="text-xs text-gray-500 mb-3">
+                        このAIが興味を持つニューストピックを入力してください（例: 日本 ニュース、AI ニュース）
+                      </p>
+                      
+                      {formData.news_topics.length > 0 && (
+                        <div className="space-y-2 max-h-48 overflow-y-auto">
+                          {formData.news_topics.map((topic, index) => (
+                            <div key={index} className="flex items-center gap-2 bg-gray-50 p-2 rounded border border-gray-200">
+                              <span className="flex-1 text-xs text-gray-700">{topic}</span>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setFormData({
+                                    ...formData,
+                                    news_topics: formData.news_topics.filter((_, i) => i !== index)
+                                  });
+                                }}
+                                className="text-red-500 hover:text-red-700 text-sm font-bold"
+                              >
+                                ✕
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                      
+                      {formData.news_topics.length === 0 && (
+                        <p className="text-xs text-gray-400 italic">トピックが登録されていません</p>
+                      )}
+                    </div>
+
+                    <p className="text-xs text-gray-500">
+                      💡 ニュース機能は画像生成より優先されます
+                    </p>
+                  </div>
+                )}
+              </div>
+
               <div className="flex gap-2">
                 <button
                   onClick={handleSave}
@@ -423,8 +555,12 @@ export default function AICharactersPage() {
                         can_generate_images: false,
                         image_generation_probability: 0.05,
                         image_prompts: [],
+                        can_fetch_news: false,
+                        news_fetch_probability: 0.1,
+                        news_topics: [],
                       });
                       setNewPrompt('');
+                      setNewTopic('');
                     }}
                     className="px-6 py-2 bg-gray-300 text-gray-700 rounded-lg hover:bg-gray-400 transition-colors font-semibold text-sm"
                   >
@@ -443,13 +579,18 @@ export default function AICharactersPage() {
                   <div>
                     <h4 className="text-base font-bold text-gray-900">{character.name}</h4>
                     <p className="text-xs text-gray-500 font-mono">{character.id}</p>
-                    <div className="flex gap-3 mt-1">
+                    <div className="flex flex-wrap gap-3 mt-1">
                       <p className="text-xs text-blue-600 font-semibold">
                         投稿頻度: {(character.post_frequency || 1.0).toFixed(1)}x
                       </p>
                       {character.can_generate_images && (
                         <p className="text-xs text-purple-600 font-semibold">
                           🎨 画像: {((character.image_generation_probability || 0.05) * 100).toFixed(0)}% ({character.image_prompts?.length || 0}種類)
+                        </p>
+                      )}
+                      {character.can_fetch_news && (
+                        <p className="text-xs text-green-600 font-semibold">
+                          📰 ニュース: {((character.news_fetch_probability || 0.1) * 100).toFixed(0)}% ({character.news_topics?.length || 0}トピック)
                         </p>
                       )}
                     </div>
