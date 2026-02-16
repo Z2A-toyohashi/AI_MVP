@@ -48,6 +48,10 @@ export async function POST(request: NextRequest) {
       style: 'natural',
     });
 
+    if (!imageResponse.data || imageResponse.data.length === 0) {
+      throw new Error('No image data returned from DALL-E');
+    }
+
     const imageUrl = imageResponse.data[0]?.url;
     
     if (!imageUrl) {
