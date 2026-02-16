@@ -8,6 +8,7 @@ import { getUserColor, formatTime } from '@/lib/utils';
 
 interface PostWithDetails extends Post {
   reply_count?: number;
+  reactions?: Record<string, { count: number; users: Array<{ id: string; isAI: boolean }> }>;
 }
 
 export default function PostsPage() {
@@ -41,9 +42,24 @@ export default function PostsPage() {
       const aiDensity = allPosts.length > 0 ? aiPosts.length / allPosts.length : 0;
       const spaceState = detectSpaceState(allPosts);
 
-      const postsWithDetails = allPosts.map(post => ({
-        ...post,
-        reply_count: allPosts.filter(p => p.thread_id === post.id).length,
+      // 各投稿のリアクションを取得
+      const postsWithDetails = await Promise.all(allPosts.map(async (post) => {
+        try {
+          const reactionsRes = await fetch(`/api/reactions?postId=${post.id}`);
+          const reactionsData = await reactionsRes.json();
+          
+          return {
+            ...post,
+            reply_count: allPosts.filter(p => p.thread_id === post.id).length,
+            reactions: reactionsData.reactions || {},
+          };
+        } catch (error) {
+          return {
+            ...post,
+            reply_count: allPosts.filter(p => p.thread_id === post.id).length,
+            reactions: {},
+          };
+        }
       }));
 
       setPosts(postsWithDetails);
@@ -147,6 +163,7 @@ export default function PostsPage() {
                     <th className="px-3 sm:px-4 py-2 sm:py-3 text-left text-xs font-semibold text-gray-600">タイプ</th>
                     <th className="px-3 sm:px-4 py-2 sm:py-3 text-left text-xs font-semibold text-gray-600">投稿者ID</th>
                     <th className="px-3 sm:px-4 py-2 sm:py-3 text-left text-xs font-semibold text-gray-600">内容</th>
+                    <th className="px-3 sm:px-4 py-2 sm:py-3 text-left text-xs font-semibold text-gray-600">リアクション</th>
                     <th className="px-3 sm:px-4 py-2 sm:py-3 text-left text-xs font-semibold text-gray-600">スレッド</th>
                     <th className="px-3 sm:px-4 py-2 sm:py-3 text-left text-xs font-semibold text-gray-600">返信先</th>
                     <th className="px-3 sm:px-4 py-2 sm:py-3 text-left text-xs font-semibold text-gray-600">返信数</th>
@@ -194,6 +211,42 @@ export default function PostsPage() {
                         </td>
                         <td className="px-3 sm:px-4 py-2 sm:py-3">
                           <p className="text-xs sm:text-sm text-gray-900 line-clamp-2 max-w-md">{post.content}</p>
+                        </td>
+                        <td className="px-3 sm:px-4 py-2 sm:py-3">
+                          {post.reactions && Object.keys(post.reactions).length > 0 ? (
+                            <div className="flex flex-wrap gap-1">
+                              {Object.entries(post.reactions).map(([emoji, info]) => (
+                                <div key={emoji} className="group relative">
+                                  <div className="flex items-center gap-1 px-2 py-1 bg-gray-100 rounded-full text-xs">
+                                    <span>{emoji}</span>
+                                    <span className="font-semibold">{info.count}</span>
+                                  </div>
+                                  {/* ホバーでユーザー一覧 */}
+                                  <div className="absolute bottom-full left-0 mb-2 hidden group-hover:block z-50 whitespace-nowrap">
+                                    <div className="bg-gray-900 text-white text-xs rounded-lg px-3 py-2 shadow-xl">
+                                      {info.users.slice(0, 5).map((user, idx) => (
+                                        <div key={idx} className="flex items-center gap-1.5">
+                                          <div
+                                            className="w-2 h-2 rounded-full"
+                                            style={{ backgroundColor: getUserColor(user.id) }}
+                                          />
+                                          <span>{user.id}</span>
+                                          {user.isAI && (
+                                            <span className="text-[10px] bg-indigo-500 px-1.5 py-0.5 rounded-full">🤖</span>
+                                          )}
+                                        </div>
+                                      ))}
+                                      {info.users.length > 5 && (
+                                        <div className="text-gray-400 mt-1">他 {info.users.length - 5}人</div>
+                                      )}
+                                    </div>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          ) : (
+                            <span className="text-xs text-gray-400">-</span>
+                          )}
                         </td>
                         <td className="px-3 sm:px-4 py-2 sm:py-3">
                           {post.thread_id ? (

@@ -146,7 +146,7 @@ export default function HomePage() {
       if (data.shouldPost) {
         await randomDelay(5, 20);
 
-        const aiUserId = Math.floor(1000 + Math.random() * 9000).toString();
+        const aiUserId = data.ai_id; // AIキャラクターのIDを使用
 
         await fetch('/api/users', {
           method: 'POST',
@@ -261,6 +261,7 @@ export default function HomePage() {
                   replies={getReplies(post.id)}
                   onReply={handleReply}
                   currentUserId={userId}
+                  onReactionUpdate={fetchPosts}
                   onDelete={async (postId) => {
                     try {
                       await fetch(`/api/posts?id=${postId}`, {

@@ -3,6 +3,7 @@ import type { Post } from '@/types';
 import { detectSpaceState, shouldAIIntervene } from '@/lib/ai-logic';
 import { generateAIResponseWithGPT } from '@/lib/gpt';
 import { supabase } from '@/lib/supabase-client';
+import { selectRandomAICharacter, shouldAIReact, selectRandomEmoji, getActiveAICharacters } from '@/lib/ai-manager';
 
 let lastAIPostTime = 0;
 
@@ -35,6 +36,20 @@ export async function POST(request: NextRequest) {
 
     const aiPosts = posts.filter(p => p.author_type === 'ai');
     const state = detectSpaceState(posts);
+    
+    // アクティブユーザー数を取得
+    const { data: users } = await supabase
+      .from('users')
+      .select('id')
+      .gte('last_seen', Date.now() - 3600000); // 1時間以内にアクティブ
+    
+    const userCount = users?.length || 1;
+    
+    // AIキャラクターを選択
+    const aiCharacter = await selectRandomAICharacter(userCount);
+    if (!aiCharacter) {
+      return NextResponse.json({ shouldPost: false, reason: 'No AI character available' });
+    }
     
     // クールダウンチェック（設定値を使用）
     const now = Date.now();
@@ -80,9 +95,9 @@ export async function POST(request: NextRequest) {
       targetPost = lastPost;
     }
 
-    // GPTで応答を生成（画像がある場合はVision APIを使用）
+    // GPTで応答を生成（AIキャラクターのプロンプトを使用）
     const content = await generateAIResponseWithGPT(
-      config.system_prompt, 
+      aiCharacter.system_prompt, 
       posts, 
       targetPost,
       config.max_response_length || 30,
@@ -96,7 +111,7 @@ export async function POST(request: NextRequest) {
     // AI介入ログを記録
     await supabase.from('logs').insert([{
       event_type: 'ai_intervention',
-      user_id: 'system',
+      user_id: aiCharacter.id,
       post_id: lastPost?.id || null,
       metadata: { 
         state, 
@@ -105,14 +120,38 @@ export async function POST(request: NextRequest) {
         used_gpt: true,
         has_image: !!targetPost?.media_url,
         probability,
+        ai_character: aiCharacter.name,
       },
       created_at: Date.now(),
     }]);
+
+    // AIリアクションの処理
+    if (shouldAIReact(state) && lastPost) {
+      const reactingAIs = await getActiveAICharacters(userCount);
+      const reactCount = Math.floor(Math.random() * Math.min(2, reactingAIs.length)) + 1;
+      
+      for (let i = 0; i < reactCount; i++) {
+        const reactingAI = reactingAIs[Math.floor(Math.random() * reactingAIs.length)];
+        const emoji = selectRandomEmoji();
+        
+        // リアクションを追加（重複チェックはAPI側で行う）
+        await fetch(`${process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'}/api/reactions`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            postId: lastPost.id,
+            userId: reactingAI.id,
+            emoji,
+          }),
+        }).catch(err => console.error('AI reaction failed:', err));
+      }
+    }
 
     return NextResponse.json({
       shouldPost: true,
       content,
       thread_id,
+      ai_id: aiCharacter.id,
     });
   } catch (error) {
     console.error('AI check error:', error);

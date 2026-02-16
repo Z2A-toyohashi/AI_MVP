@@ -51,6 +51,25 @@ CREATE TABLE IF NOT EXISTS ai_settings (
 );
 
 -- デフォルトのシステムプロンプトを挿入
+
+-- AIキャラクターテーブル
+CREATE TABLE IF NOT EXISTS ai_characters (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  personality TEXT NOT NULL,
+  system_prompt TEXT NOT NULL,
+  created_at BIGINT NOT NULL
+);
+
+-- リアクションテーブル
+CREATE TABLE IF NOT EXISTS reactions (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  post_id TEXT NOT NULL REFERENCES posts(id) ON DELETE CASCADE,
+  user_id TEXT NOT NULL REFERENCES users(id),
+  emoji TEXT NOT NULL,
+  created_at BIGINT NOT NULL,
+  UNIQUE(post_id, user_id, emoji)
+);
 INSERT INTO ai_settings (id, system_prompt, updated_at)
 VALUES (
   'default',

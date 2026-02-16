@@ -36,6 +36,11 @@ export default function PostInput({
   };
 
   const handleSubmit = async () => {
+    console.log('=== Submit Debug ===');
+    console.log('Content:', content);
+    console.log('Image file:', imageFile);
+    console.log('==================');
+
     if (!content.trim() && !imageFile) return;
 
     let mediaUrl: string | undefined;
@@ -46,22 +51,32 @@ export default function PostInput({
       const formData = new FormData();
       formData.append('image', imageFile);
 
+      console.log('=== Upload Start ===');
+      console.log('File name:', imageFile.name);
+      console.log('File size:', imageFile.size);
+      console.log('File type:', imageFile.type);
+
       try {
         const res = await fetch('/api/upload', {
           method: 'POST',
           body: formData,
         });
         
+        console.log('Upload response status:', res.status);
+        
         if (!res.ok) {
-          throw new Error('Upload failed');
+          const errorData = await res.json();
+          console.error('Upload error response:', errorData);
+          throw new Error(errorData.error || 'Upload failed');
         }
         
         const data = await res.json();
+        console.log('Upload success:', data);
         mediaUrl = data.url;
         type = 'image';
       } catch (error) {
         console.error('Upload failed:', error);
-        alert('画像のアップロードに失敗しました');
+        alert(`画像のアップロードに失敗しました: ${error instanceof Error ? error.message : '不明なエラー'}`);
         setIsUploading(false);
         return;
       }
