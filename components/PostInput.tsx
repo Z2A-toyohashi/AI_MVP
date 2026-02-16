@@ -276,7 +276,6 @@ export default function PostInput({
             ref={fileInputRef}
             type="file"
             accept="image/*,image/heic,image/heif"
-            capture="environment"
             onChange={handleImageSelect}
             className="hidden"
           />
