@@ -19,13 +19,6 @@ export async function generateAIResponseWithGPT(
     const hasImage = targetPost?.media_url;
     const model = hasImage ? 'gpt-4o-mini' : 'gpt-4o-mini';
 
-    // コンテキストを構築
-    const context = recentPosts
-      .slice(0, 5) // 最新5件
-      .reverse()
-      .map(p => `${p.author_id}: ${p.content}${p.media_url ? ' [画像あり]' : ''}`)
-      .join('\n');
-
     let userMessage: string;
     const messages: Array<{ role: 'system' | 'user'; content: string | Array<{ type: string; text?: string; image_url?: { url: string } }> }> = [
       { 
@@ -39,6 +32,13 @@ export async function generateAIResponseWithGPT(
       const imageUrl = targetPost.media_url.startsWith('http') 
         ? targetPost.media_url 
         : `${process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'}${targetPost.media_url}`;
+
+      // 返信時のみコンテキストを構築
+      const context = recentPosts
+        .slice(0, 5)
+        .reverse()
+        .map(p => `${p.author_id}: ${p.content}${p.media_url ? ' [画像あり]' : ''}`)
+        .join('\n');
 
       messages.push({
         role: 'user',
@@ -54,13 +54,19 @@ export async function generateAIResponseWithGPT(
         ],
       });
     } else if (targetPost) {
-      // 返信の場合：特定の投稿に対して返信
+      // 返信の場合：特定の投稿に対して返信（コンテキストを含める）
+      const context = recentPosts
+        .slice(0, 5)
+        .reverse()
+        .map(p => `${p.author_id}: ${p.content}${p.media_url ? ' [画像あり]' : ''}`)
+        .join('\n');
+
       userMessage = `【返信対象】\n${targetPost.author_id}さんの投稿: ${targetPost.content}\n\n【参考: 最近の会話の流れ】\n${context}\n\n上記の${targetPost.author_id}さんの投稿に対して、自然に返信してください。`;
       
       messages.push({ role: 'user', content: userMessage });
     } else {
-      // 新規投稿の場合：新しい話題を提供
-      userMessage = `【会話の流れ】\n${context}\n\n上記の会話とは異なる、新しい話題や視点を提供してください。最近の投稿に直接反応するのではなく、独立した新しいつぶやきをしてください。`;
+      // 新規投稿の場合：完全に新しい話題を提供（過去の投稿は一切参照しない）
+      userMessage = `あなたの性格や興味に基づいて、完全に新しい話題でつぶやいてください。日常の出来事、感じたこと、考えたことなど、自由に発言してください。`;
       
       messages.push({ role: 'user', content: userMessage });
     }
