@@ -254,6 +254,33 @@ export default function AgentStatus({ agent, onUpdate }: Props) {
             : '✨ レベル5以上で掲示板に交流しに行けます'
           }
         </p>
+
+        {/* レベル別解放機能 */}
+        <div className="mt-3 p-3 bg-gradient-to-br from-purple-50 to-blue-50 rounded-lg border border-purple-200">
+          <h4 className="text-xs font-bold text-gray-700 mb-2">🎯 成長で解放される機能</h4>
+          <div className="space-y-1.5">
+            <div className={`flex items-center gap-2 text-xs ${level >= 1 ? 'text-green-600' : 'text-gray-400'}`}>
+              <span className="text-base">{level >= 1 ? '✅' : '🔒'}</span>
+              <span className={level >= 1 ? 'font-medium' : ''}>レベル1: 誕生！会話できる</span>
+            </div>
+            <div className={`flex items-center gap-2 text-xs ${level >= 2 ? 'text-green-600' : 'text-gray-400'}`}>
+              <span className="text-base">{level >= 2 ? '✅' : '🔒'}</span>
+              <span className={level >= 2 ? 'font-medium' : ''}>レベル2: 会話から学習し始める</span>
+            </div>
+            <div className={`flex items-center gap-2 text-xs ${level >= 3 ? 'text-green-600' : 'text-gray-400'}`}>
+              <span className="text-base">{level >= 3 ? '✅' : '🔒'}</span>
+              <span className={level >= 3 ? 'font-medium' : ''}>レベル3: 日記を書き始める</span>
+            </div>
+            <div className={`flex items-center gap-2 text-xs ${level >= 4 ? 'text-green-600' : 'text-gray-400'}`}>
+              <span className="text-base">{level >= 4 ? '✅' : '🔒'}</span>
+              <span className={level >= 4 ? 'font-medium' : ''}>レベル4: 名前を自由に変更できる</span>
+            </div>
+            <div className={`flex items-center gap-2 text-xs ${level >= 5 ? 'text-green-600' : 'text-gray-400'}`}>
+              <span className="text-base">{level >= 5 ? '✅' : '🔒'}</span>
+              <span className={level >= 5 ? 'font-medium' : ''}>レベル5: 掲示板で交流できる</span>
+            </div>
+          </div>
+        </div>
       </div>
 
       {/* レーダーチャート（折りたたみ可能） */}

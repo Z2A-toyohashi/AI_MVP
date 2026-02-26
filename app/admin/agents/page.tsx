@@ -25,6 +25,47 @@ export default function AgentsAdminPage() {
   const [newName, setNewName] = useState('');
   const [savingName, setSavingName] = useState(false);
 
+  const [selectedAgent, setSelectedAgent] = useState<Agent | null>(null);
+  const [conversations, setConversations] = useState<any[]>([]);
+  const [loadingConversations, setLoadingConversations] = useState(false);
+
+  const getLevelFeatures = (level: number) => {
+    const features = [
+      { level: 1, feature: '✨ 誕生！主人と会話できる', unlocked: level >= 1 },
+      { level: 2, feature: '📝 会話から学習し始める', unlocked: level >= 2 },
+      { level: 3, feature: '📔 日記を書き始める', unlocked: level >= 3 },
+      { level: 4, feature: '✏️ 名前を自由に変更できる', unlocked: level >= 4 },
+      { level: 5, feature: '🌐 掲示板で他の人と交流できる', unlocked: level >= 5 },
+    ];
+    return features;
+  };
+
+  const formatMessageTime = (timestamp: number) => {
+    const date = new Date(timestamp);
+    const month = date.getMonth() + 1;
+    const day = date.getDate();
+    const time = date.toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' });
+    return `${month}/${day} ${time}`;
+  };
+
+  const loadConversations = async (agentId: string) => {
+    setLoadingConversations(true);
+    try {
+      const res = await fetch(`/api/conversations?agentId=${agentId}`);
+      const data = await res.json();
+      setConversations(data || []);
+    } catch (error) {
+      console.error('Failed to load conversations:', error);
+    } finally {
+      setLoadingConversations(false);
+    }
+  };
+
+  const handleAgentClick = async (agent: Agent) => {
+    setSelectedAgent(agent);
+    await loadConversations(agent.id);
+  };
+
   useEffect(() => {
     loadAgents();
     loadGlobalPrompt();
@@ -159,7 +200,11 @@ export default function AgentsAdminPage() {
         <h2 className="text-lg font-semibold text-gray-800 mb-4">エージェント一覧</h2>
         <div className="grid gap-6">
           {agents.map((agent) => (
-            <div key={agent.id} className="bg-white rounded-lg shadow p-6">
+            <div 
+              key={agent.id} 
+              className="bg-white rounded-lg shadow p-6 cursor-pointer hover:shadow-lg transition-shadow"
+              onClick={() => handleAgentClick(agent)}
+            >
               <div className="flex items-start gap-4">
                 {agent.character_image_url && (
                   <div className="w-16 h-16 rounded-full overflow-hidden bg-gray-100 flex-shrink-0">
@@ -174,7 +219,7 @@ export default function AgentsAdminPage() {
                 <div className="flex-1">
                   <div className="flex items-center gap-3 mb-2">
                     {editingName === agent.id ? (
-                      <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
                         <input
                           type="text"
                           value={newName}
@@ -203,7 +248,10 @@ export default function AgentsAdminPage() {
                         <h3 className="text-lg font-semibold text-gray-800">{agent.name}</h3>
                         {agent.level >= 4 && (
                           <button
-                            onClick={() => handleEditName(agent)}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleEditName(agent);
+                            }}
                             className="px-2 py-1 bg-purple-100 text-purple-700 text-xs rounded hover:bg-purple-200 transition-colors"
                           >
                             ✏️ 名前変更
@@ -222,7 +270,7 @@ export default function AgentsAdminPage() {
                     )}
                   </p>
 
-                  <div className="flex gap-2 text-xs">
+                  <div className="flex gap-2 text-xs flex-wrap">
                     <span className="bg-blue-100 text-blue-700 px-2 py-0.5 rounded">
                       ポジ: {agent.personality.positive || 0}
                     </span>
@@ -237,6 +285,9 @@ export default function AgentsAdminPage() {
                         掲示板投稿可
                       </span>
                     )}
+                    <span className="bg-gray-100 text-gray-700 px-2 py-0.5 rounded">
+                      👁️ クリックで詳細
+                    </span>
                   </div>
                 </div>
               </div>
@@ -292,6 +343,118 @@ export default function AgentsAdminPage() {
                 className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-blue-300 transition-colors"
               >
                 {savingPrompt ? '保存中...' : '保存'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* エージェント詳細モーダル */}
+      {selectedAgent && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg shadow-xl max-w-4xl w-full max-h-[90vh] overflow-hidden flex flex-col">
+            <div className="p-6 border-b border-gray-200 flex items-center justify-between">
+              <div className="flex items-center gap-4">
+                {selectedAgent.character_image_url && (
+                  <div className="w-12 h-12 rounded-full overflow-hidden bg-gray-100">
+                    <img 
+                      src={selectedAgent.character_image_url} 
+                      alt={selectedAgent.name}
+                      className="w-full h-full object-contain"
+                    />
+                  </div>
+                )}
+                <div>
+                  <h2 className="text-xl font-bold text-gray-800">{selectedAgent.name}</h2>
+                  <p className="text-sm text-gray-500">レベル {selectedAgent.level} | {selectedAgent.user_id}</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setSelectedAgent(null)}
+                className="text-gray-400 hover:text-gray-600 text-2xl"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto p-6">
+              {/* レベル別機能 */}
+              <div className="mb-6">
+                <h3 className="text-lg font-semibold text-gray-800 mb-3">🎯 解放された機能</h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  {getLevelFeatures(selectedAgent.level).map((feature, index) => (
+                    <div
+                      key={index}
+                      className={`p-3 rounded-lg border-2 ${
+                        feature.unlocked
+                          ? 'bg-green-50 border-green-200'
+                          : 'bg-gray-50 border-gray-200'
+                      }`}
+                    >
+                      <div className="flex items-center gap-2">
+                        <span className="text-xl">{feature.unlocked ? '✅' : '🔒'}</span>
+                        <div>
+                          <p className={`text-sm font-medium ${
+                            feature.unlocked ? 'text-green-700' : 'text-gray-500'
+                          }`}>
+                            レベル{feature.level}
+                          </p>
+                          <p className={`text-xs ${
+                            feature.unlocked ? 'text-green-600' : 'text-gray-400'
+                          }`}>
+                            {feature.feature}
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* 会話ログ */}
+              <div>
+                <h3 className="text-lg font-semibold text-gray-800 mb-3">💬 会話ログ（最新50件）</h3>
+                {loadingConversations ? (
+                  <div className="text-center py-8 text-gray-500">読み込み中...</div>
+                ) : conversations.length === 0 ? (
+                  <div className="text-center py-8 text-gray-400">
+                    <p className="text-3xl mb-2">💬</p>
+                    <p>まだ会話がありません</p>
+                  </div>
+                ) : (
+                  <div className="space-y-3 max-h-96 overflow-y-auto">
+                    {conversations.map((conv) => (
+                      <div
+                        key={conv.id}
+                        className={`flex ${conv.role === 'user' ? 'justify-end' : 'justify-start'}`}
+                      >
+                        <div className="max-w-[80%]">
+                          <div
+                            className={`rounded-2xl px-4 py-2 ${
+                              conv.role === 'user'
+                                ? 'bg-purple-500 text-white rounded-br-sm'
+                                : 'bg-gray-100 text-gray-800 rounded-bl-sm'
+                            }`}
+                          >
+                            <p className="text-sm whitespace-pre-wrap break-words">{conv.content}</p>
+                          </div>
+                          <p className="text-[10px] text-gray-400 mt-0.5 px-1">
+                            {formatMessageTime(conv.created_at)}
+                          </p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div className="p-6 border-t border-gray-200 flex justify-end">
+              <button
+                onClick={() => setSelectedAgent(null)}
+                className="px-6 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition-colors"
+              >
+                閉じる
               </button>
             </div>
           </div>
