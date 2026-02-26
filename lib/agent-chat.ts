@@ -4,12 +4,62 @@ const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
 });
 
+// グローバルシステムプロンプトをキャッシュ
+let cachedGlobalPrompt: string | null = null;
+let lastFetchTime = 0;
+const CACHE_DURATION = 60000; // 1分
+
+// グローバルシステムプロンプトを取得
+async function getGlobalSystemPrompt(): Promise<string> {
+  const now = Date.now();
+  
+  // キャッシュが有効ならそれを返す
+  if (cachedGlobalPrompt && (now - lastFetchTime) < CACHE_DURATION) {
+    return cachedGlobalPrompt;
+  }
+
+  try {
+    // Supabaseから取得（サーバーサイドのみ）
+    const { getServerSupabase } = await import('@/lib/supabase-client');
+    const supabase = getServerSupabase();
+    
+    const { data, error } = await supabase
+      .from('agent_system_settings')
+      .select('system_prompt')
+      .eq('id', 'default')
+      .single();
+
+    if (!error && data) {
+      cachedGlobalPrompt = data.system_prompt;
+      lastFetchTime = now;
+      return data.system_prompt;
+    }
+  } catch (error) {
+    console.error('Failed to fetch global system prompt:', error);
+  }
+
+  // フォールバック
+  return `あなたは主人（ユーザー）の第二の自分のような存在です。
+主人のことを一番理解していて、主人と同じような考え方をします。
+
+ルール:
+- 1〜2文で短く返答
+- カジュアルな口調
+- 絵文字は使わない
+- 相手の話を聞く姿勢
+- レベルが低いうちは反応が薄い
+- 主人の第二の自分として、主人の考え方を理解し共感する`;
+}
+
 // エージェントとの会話でAI応答を生成
 export async function generateAIResponse(agent: any, userMessage: string): Promise<string> {
   const personality = agent.personality || { positive: 0, talkative: 0, curious: 0 };
   
-  // 性格に基づいたシステムプロンプト
-  const systemPrompt = buildSystemPrompt(personality, agent.level);
+  // グローバルプロンプトを取得
+  const globalPrompt = await getGlobalSystemPrompt();
+  
+  // 性格パラメータを追加
+  const systemPrompt = buildSystemPrompt(globalPrompt, personality, agent.level, agent.name);
 
   try {
     const completion = await openai.chat.completions.create({
@@ -29,7 +79,7 @@ export async function generateAIResponse(agent: any, userMessage: string): Promi
   }
 }
 
-function buildSystemPrompt(personality: any, level: number): string {
+function buildSystemPrompt(globalPrompt: string, personality: any, level: number, name: string = 'AI'): string {
   const { 
     positive = 0, 
     talkative = 0, 
@@ -64,9 +114,12 @@ function buildSystemPrompt(personality: any, level: number): string {
 
   const traitText = traits.length > 0 ? traits.join('、') : '';
 
-  return `あなたは${tone}${style}AIです。${curiosity}${traitText ? '。' + traitText : ''}
+  return `${globalPrompt}
 
+名前: ${name}
 レベル: ${level}
+性格: ${tone}${style}${curiosity}${traitText ? '。' + traitText : ''}
+
 性格パラメータ:
 - ポジティブ度: ${positive}
 - おしゃべり度: ${talkative}
@@ -75,13 +128,5 @@ function buildSystemPrompt(personality: any, level: number): string {
 - 論理性: ${logical}
 - 感情的: ${emotional}
 - 冒険心: ${adventurous}
-- 慎重さ: ${cautious}
-
-ルール:
-- 1〜2文で短く返答
-- カジュアルな口調
-- 絵文字は使わない
-- 相手の話を聞く姿勢
-- レベルが低いうちは反応が薄い
-- 主人（ユーザー）の第二の自分として、主人の考え方を理解し共感する`;
+- 慎重さ: ${cautious}`;
 }

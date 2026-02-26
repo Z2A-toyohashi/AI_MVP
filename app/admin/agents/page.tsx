@@ -7,35 +7,27 @@ interface Agent {
   id: string;
   user_id: string;
   name: string;
-  personality: {
-    positive: number;
-    talkative: number;
-    curious: number;
-  };
+  personality: any;
   level: number;
-  experience: number;
-  appearance_stage: number;
   character_image_url?: string;
   can_post_to_sns: boolean;
-  created_at: number;
-}
-
-interface Conversation {
-  id: string;
-  role: 'user' | 'ai';
-  content: string;
-  created_at: number;
 }
 
 export default function AgentsAdminPage() {
   const [agents, setAgents] = useState<Agent[]>([]);
-  const [selectedAgent, setSelectedAgent] = useState<Agent | null>(null);
-  const [conversations, setConversations] = useState<Conversation[]>([]);
   const [loading, setLoading] = useState(true);
-  const [posting, setPosting] = useState(false);
+  const [globalPrompt, setGlobalPrompt] = useState('');
+  const [editingGlobalPrompt, setEditingGlobalPrompt] = useState(false);
+  const [editingPromptText, setEditingPromptText] = useState('');
+  const [savingPrompt, setSavingPrompt] = useState(false);
+  
+  const [editingName, setEditingName] = useState<string | null>(null);
+  const [newName, setNewName] = useState('');
+  const [savingName, setSavingName] = useState(false);
 
   useEffect(() => {
     loadAgents();
+    loadGlobalPrompt();
   }, []);
 
   const loadAgents = async () => {
@@ -50,197 +42,261 @@ export default function AgentsAdminPage() {
     }
   };
 
-  const loadConversations = async (agentId: string) => {
+  const loadGlobalPrompt = async () => {
     try {
-      const res = await fetch(`/api/conversations?agentId=${agentId}`);
+      const res = await fetch('/api/admin/system-prompt');
       const data = await res.json();
-      setConversations(data || []);
+      setGlobalPrompt(data.system_prompt || '');
     } catch (error) {
-      console.error('Failed to load conversations:', error);
+      console.error('Failed to load global prompt:', error);
     }
   };
 
-  const handleSelectAgent = (agent: Agent) => {
-    setSelectedAgent(agent);
-    loadConversations(agent.id);
+  const handleEditGlobalPrompt = () => {
+    setEditingPromptText(globalPrompt);
+    setEditingGlobalPrompt(true);
   };
 
-  const handleTestPost = async (agentId: string) => {
-    if (posting) return;
-    
-    setPosting(true);
+  const handleSaveGlobalPrompt = async () => {
+    setSavingPrompt(true);
     try {
-      const res = await fetch('/api/agent-post', {
-        method: 'POST',
+      const res = await fetch('/api/admin/system-prompt', {
+        method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ agentId }),
+        body: JSON.stringify({ system_prompt: editingPromptText }),
       });
 
       if (res.ok) {
-        alert('掲示板に投稿しました！');
+        alert('グローバルシステムプロンプトを更新しました');
+        setGlobalPrompt(editingPromptText);
+        setEditingGlobalPrompt(false);
       } else {
-        const data = await res.json();
-        alert(data.error || '投稿に失敗しました');
+        alert('更新に失敗しました');
       }
     } catch (error) {
-      console.error('Failed to post:', error);
-      alert('投稿に失敗しました');
+      console.error('Failed to save prompt:', error);
+      alert('更新に失敗しました');
     } finally {
-      setPosting(false);
+      setSavingPrompt(false);
     }
   };
 
-  const formatDate = (timestamp: number) => {
-    return new Date(timestamp).toLocaleString('ja-JP');
+  const handleEditName = (agent: Agent) => {
+    setEditingName(agent.id);
+    setNewName(agent.name);
+  };
+
+  const handleSaveName = async (agentId: string) => {
+    if (!newName.trim()) {
+      alert('名前を入力してください');
+      return;
+    }
+
+    setSavingName(true);
+    try {
+      const res = await fetch('/api/admin/agents', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ agentId, name: newName.trim() }),
+      });
+
+      if (res.ok) {
+        alert('名前を更新しました');
+        setEditingName(null);
+        loadAgents();
+      } else {
+        const data = await res.json();
+        alert(data.error || '更新に失敗しました');
+      }
+    } catch (error) {
+      console.error('Failed to save name:', error);
+      alert('更新に失敗しました');
+    } finally {
+      setSavingName(false);
+    }
   };
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-50">
+      <div className="min-h-screen bg-gray-50">
         <AdminHeader />
-        <main className="max-w-7xl mx-auto px-4 py-8">
-          <div className="text-center">読み込み中...</div>
-        </main>
+        <div className="max-w-7xl mx-auto p-6">
+          <div className="text-center py-12">読み込み中...</div>
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-50">
+    <div className="min-h-screen bg-gray-50">
       <AdminHeader />
-      <main className="max-w-7xl mx-auto px-4 py-8">
-        <div className="mb-6">
-          <h2 className="text-2xl font-bold text-gray-800 mb-2">エージェント管理</h2>
-          <p className="text-gray-600">ユーザーのAIエージェント一覧と会話ログ</p>
-          <p className="text-xs text-purple-600 mt-1">
-            💡 レベル5以上のエージェントは掲示板で交流できます
-          </p>
+      
+      <div className="max-w-7xl mx-auto p-6">
+        <h1 className="text-2xl font-bold text-gray-800 mb-6">エージェント管理</h1>
+
+        {/* グローバルシステムプロンプト */}
+        <div className="bg-white rounded-lg shadow p-6 mb-6">
+          <div className="flex items-center justify-between mb-4">
+            <div>
+              <h2 className="text-lg font-semibold text-gray-800">グローバルシステムプロンプト</h2>
+              <p className="text-sm text-gray-500">全てのAIキャラに適用されるシステムプロンプト</p>
+            </div>
+            <button
+              onClick={handleEditGlobalPrompt}
+              className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+            >
+              編集
+            </button>
+          </div>
+          <div className="p-4 bg-gray-50 rounded border border-gray-200">
+            <p className="text-sm text-gray-700 whitespace-pre-wrap font-mono">
+              {globalPrompt || '設定されていません'}
+            </p>
+          </div>
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          {/* エージェント一覧 */}
-          <div className="bg-white rounded-lg shadow-md p-6">
-            <h3 className="text-lg font-semibold text-gray-800 mb-4">
-              エージェント一覧 ({agents.length})
-            </h3>
-            
-            {agents.length === 0 ? (
-              <p className="text-gray-500 text-center py-8">エージェントがありません</p>
-            ) : (
-              <div className="space-y-3 max-h-[600px] overflow-y-auto">
-                {agents.map((agent) => (
-                  <div
-                    key={agent.id}
-                    onClick={() => handleSelectAgent(agent)}
-                    className={`p-4 border-2 rounded-lg cursor-pointer transition-all ${
-                      selectedAgent?.id === agent.id
-                        ? 'border-purple-500 bg-purple-50'
-                        : 'border-gray-200 hover:border-purple-300'
-                    }`}
-                  >
-                    <div className="flex items-start gap-3">
-                      {agent.character_image_url ? (
-                        <img
-                          src={agent.character_image_url}
-                          alt={agent.name}
-                          className="w-12 h-12 rounded-full object-cover"
+        {/* エージェント一覧 */}
+        <h2 className="text-lg font-semibold text-gray-800 mb-4">エージェント一覧</h2>
+        <div className="grid gap-6">
+          {agents.map((agent) => (
+            <div key={agent.id} className="bg-white rounded-lg shadow p-6">
+              <div className="flex items-start gap-4">
+                {agent.character_image_url && (
+                  <div className="w-16 h-16 rounded-full overflow-hidden bg-gray-100 flex-shrink-0">
+                    <img 
+                      src={agent.character_image_url} 
+                      alt={agent.name}
+                      className="w-full h-full object-contain"
+                    />
+                  </div>
+                )}
+                
+                <div className="flex-1">
+                  <div className="flex items-center gap-3 mb-2">
+                    {editingName === agent.id ? (
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="text"
+                          value={newName}
+                          onChange={(e) => setNewName(e.target.value)}
+                          className="px-3 py-1 border border-gray-300 rounded focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                          placeholder="新しい名前"
+                          maxLength={20}
                         />
-                      ) : (
-                        <div className="w-12 h-12 rounded-full bg-purple-200 flex items-center justify-center text-2xl">
-                          🥚
-                        </div>
-                      )}
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2 mb-1">
-                          <h4 className="font-semibold text-gray-800">{agent.name}</h4>
-                          <span className="text-xs bg-gray-200 px-2 py-0.5 rounded">
-                            Lv.{agent.level}
-                          </span>
-                          {agent.can_post_to_sns && (
-                            <span className="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded">
-                              掲示板可
-                            </span>
-                          )}
-                        </div>
-                        <p className="text-xs text-gray-500 mb-2">
-                          ユーザー: {agent.user_id}
-                        </p>
-                        <div className="flex gap-2 text-xs">
-                          <span className="bg-blue-100 text-blue-700 px-2 py-0.5 rounded">
-                            ポジ: {agent.personality.positive}
-                          </span>
-                          <span className="bg-green-100 text-green-700 px-2 py-0.5 rounded">
-                            話: {agent.personality.talkative}
-                          </span>
-                          <span className="bg-yellow-100 text-yellow-700 px-2 py-0.5 rounded">
-                            好奇心: {agent.personality.curious}
-                          </span>
-                        </div>
-                        {agent.can_post_to_sns && (
+                        <button
+                          onClick={() => handleSaveName(agent.id)}
+                          disabled={savingName}
+                          className="px-3 py-1 bg-green-600 text-white text-sm rounded hover:bg-green-700 disabled:bg-gray-300"
+                        >
+                          保存
+                        </button>
+                        <button
+                          onClick={() => setEditingName(null)}
+                          disabled={savingName}
+                          className="px-3 py-1 bg-gray-300 text-gray-700 text-sm rounded hover:bg-gray-400"
+                        >
+                          キャンセル
+                        </button>
+                      </div>
+                    ) : (
+                      <>
+                        <h3 className="text-lg font-semibold text-gray-800">{agent.name}</h3>
+                        {agent.level >= 4 && (
                           <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleTestPost(agent.id);
-                            }}
-                            disabled={posting}
-                            className="mt-2 w-full py-1 bg-purple-500 text-white text-xs rounded hover:bg-purple-600 disabled:bg-gray-300 transition-colors"
+                            onClick={() => handleEditName(agent)}
+                            className="px-2 py-1 bg-purple-100 text-purple-700 text-xs rounded hover:bg-purple-200 transition-colors"
                           >
-                            {posting ? '投稿中...' : '🌐 テスト投稿'}
+                            ✏️ 名前変更
                           </button>
                         )}
-                      </div>
-                    </div>
+                      </>
+                    )}
                   </div>
-                ))}
-              </div>
-            )}
-          </div>
-
-          {/* 会話ログ */}
-          <div className="bg-white rounded-lg shadow-md p-6">
-            <h3 className="text-lg font-semibold text-gray-800 mb-4">
-              会話ログ
-            </h3>
-
-            {!selectedAgent ? (
-              <p className="text-gray-500 text-center py-8">
-                エージェントを選択してください
-              </p>
-            ) : conversations.length === 0 ? (
-              <p className="text-gray-500 text-center py-8">
-                会話履歴がありません
-              </p>
-            ) : (
-              <div className="space-y-3 max-h-[600px] overflow-y-auto">
-                {conversations.map((conv) => (
-                  <div
-                    key={conv.id}
-                    className={`p-3 rounded-lg ${
-                      conv.role === 'user'
-                        ? 'bg-blue-50 ml-8'
-                        : 'bg-gray-50 mr-8'
-                    }`}
-                  >
-                    <div className="flex items-center gap-2 mb-1">
-                      <span className={`text-xs font-semibold ${
-                        conv.role === 'user' ? 'text-blue-700' : 'text-gray-700'
-                      }`}>
-                        {conv.role === 'user' ? 'ユーザー' : 'AI'}
+                  
+                  <p className="text-sm text-gray-500 mb-2">
+                    ユーザーID: {agent.user_id} | レベル: {agent.level}
+                    {agent.level < 4 && (
+                      <span className="ml-2 text-xs text-orange-600">
+                        （レベル4で名前変更可能）
                       </span>
-                      <span className="text-xs text-gray-500">
-                        {formatDate(conv.created_at)}
+                    )}
+                  </p>
+
+                  <div className="flex gap-2 text-xs">
+                    <span className="bg-blue-100 text-blue-700 px-2 py-0.5 rounded">
+                      ポジ: {agent.personality.positive || 0}
+                    </span>
+                    <span className="bg-green-100 text-green-700 px-2 py-0.5 rounded">
+                      話: {agent.personality.talkative || 0}
+                    </span>
+                    <span className="bg-yellow-100 text-yellow-700 px-2 py-0.5 rounded">
+                      好奇心: {agent.personality.curious || 0}
+                    </span>
+                    {agent.can_post_to_sns && (
+                      <span className="bg-purple-100 text-purple-700 px-2 py-0.5 rounded">
+                        掲示板投稿可
                       </span>
-                    </div>
-                    <p className="text-sm text-gray-800 whitespace-pre-wrap">
-                      {conv.content}
-                    </p>
+                    )}
                   </div>
-                ))}
+                </div>
               </div>
-            )}
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* グローバルプロンプト編集モーダル */}
+      {editingGlobalPrompt && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg shadow-xl max-w-4xl w-full max-h-[90vh] overflow-hidden flex flex-col">
+            <div className="p-6 border-b border-gray-200">
+              <h2 className="text-xl font-bold text-gray-800">
+                グローバルシステムプロンプト編集
+              </h2>
+              <p className="text-sm text-gray-500 mt-1">
+                全てのAIキャラに適用されます
+              </p>
+            </div>
+
+            <div className="flex-1 overflow-y-auto p-6">
+              <textarea
+                value={editingPromptText}
+                onChange={(e) => setEditingPromptText(e.target.value)}
+                className="w-full h-96 p-4 border border-gray-300 rounded-lg font-mono text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                placeholder="システムプロンプトを入力..."
+              />
+
+              <div className="mt-4 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+                <h3 className="font-semibold text-blue-800 mb-2">💡 プロンプトのヒント</h3>
+                <ul className="text-sm text-blue-700 space-y-1">
+                  <li>• 全AIキャラの基本的な性格や口調を定義</li>
+                  <li>• 返答の長さや形式を指定（例：「1〜2文で短く」）</li>
+                  <li>• 禁止事項を明記（例：「絵文字は使わない」）</li>
+                  <li>• ユーザーとの関係性を定義（例：「主人の第二の自分」）</li>
+                  <li>• 各キャラの性格パラメータは自動的に追加されます</li>
+                </ul>
+              </div>
+            </div>
+
+            <div className="p-6 border-t border-gray-200 flex gap-3 justify-end">
+              <button
+                onClick={() => setEditingGlobalPrompt(false)}
+                disabled={savingPrompt}
+                className="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 disabled:bg-gray-100 transition-colors"
+              >
+                キャンセル
+              </button>
+              <button
+                onClick={handleSaveGlobalPrompt}
+                disabled={savingPrompt}
+                className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-blue-300 transition-colors"
+              >
+                {savingPrompt ? '保存中...' : '保存'}
+              </button>
+            </div>
           </div>
         </div>
-      </main>
+      )}
     </div>
   );
 }

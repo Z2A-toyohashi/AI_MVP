@@ -32,6 +32,9 @@ export default function AgentStatus({ agent, onUpdate }: Props) {
   const { personality, level, experience, appearance_stage } = agent;
   const [posting, setPosting] = useState(false);
   const [showPersonality, setShowPersonality] = useState(false);
+  const [editingName, setEditingName] = useState(false);
+  const [newName, setNewName] = useState(agent.name);
+  const [savingName, setSavingName] = useState(false);
 
   const handlePostToBbs = async () => {
     if (posting || !agent.can_post_to_sns) return;
@@ -56,6 +59,36 @@ export default function AgentStatus({ agent, onUpdate }: Props) {
       alert('投稿に失敗しました');
     } finally {
       setPosting(false);
+    }
+  };
+
+  const handleSaveName = async () => {
+    if (!newName.trim()) {
+      alert('名前を入力してください');
+      return;
+    }
+
+    setSavingName(true);
+    try {
+      const res = await fetch('/api/admin/agents', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ agentId: agent.id, name: newName.trim() }),
+      });
+
+      if (res.ok) {
+        alert('名前を変更しました！');
+        setEditingName(false);
+        onUpdate();
+      } else {
+        const data = await res.json();
+        alert(data.error || '名前の変更に失敗しました');
+      }
+    } catch (error) {
+      console.error('Failed to save name:', error);
+      alert('名前の変更に失敗しました');
+    } finally {
+      setSavingName(false);
     }
   };
 
@@ -144,10 +177,59 @@ export default function AgentStatus({ agent, onUpdate }: Props) {
         ) : (
           <div className="text-5xl md:text-6xl mb-2">{getAppearance()}</div>
         )}
-        <h2 className="text-lg md:text-xl font-bold text-gray-800">{agent.name}</h2>
-        <p className="text-xs md:text-sm text-gray-500">レベル {level}</p>
-        {agent.can_post_to_sns && (
-          <p className="text-xs text-green-600 mt-1">✨ 掲示板投稿可能</p>
+        
+        {editingName ? (
+          <div className="flex flex-col items-center gap-2 mt-2">
+            <input
+              type="text"
+              value={newName}
+              onChange={(e) => setNewName(e.target.value)}
+              className="px-3 py-1 border border-gray-300 rounded text-center focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+              placeholder="新しい名前"
+              maxLength={20}
+            />
+            <div className="flex gap-2">
+              <button
+                onClick={handleSaveName}
+                disabled={savingName}
+                className="px-3 py-1 bg-green-600 text-white text-xs rounded hover:bg-green-700 disabled:bg-gray-300"
+              >
+                保存
+              </button>
+              <button
+                onClick={() => {
+                  setEditingName(false);
+                  setNewName(agent.name);
+                }}
+                disabled={savingName}
+                className="px-3 py-1 bg-gray-300 text-gray-700 text-xs rounded hover:bg-gray-400"
+              >
+                キャンセル
+              </button>
+            </div>
+          </div>
+        ) : (
+          <>
+            <div className="flex items-center justify-center gap-2">
+              <h2 className="text-lg md:text-xl font-bold text-gray-800">{agent.name}</h2>
+              {level >= 4 && (
+                <button
+                  onClick={() => setEditingName(true)}
+                  className="text-xs text-purple-600 hover:text-purple-700"
+                  title="名前を変更"
+                >
+                  ✏️
+                </button>
+              )}
+            </div>
+            <p className="text-xs md:text-sm text-gray-500">レベル {level}</p>
+            {level >= 4 && level < 5 && (
+              <p className="text-xs text-purple-600 mt-1">✨ 名前変更可能</p>
+            )}
+            {agent.can_post_to_sns && (
+              <p className="text-xs text-green-600 mt-1">✨ 掲示板投稿可能</p>
+            )}
+          </>
         )}
       </div>
 
