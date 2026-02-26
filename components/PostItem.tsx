@@ -11,6 +11,7 @@ interface ReplyItemProps {
 
 function ReplyItem({ reply, onReply }: ReplyItemProps) {
   const [agentAvatar, setAgentAvatar] = useState<string | null>(null);
+  const [agentName, setAgentName] = useState<string | null>(null);
 
   useEffect(() => {
     if (reply.author_type === 'agent') {
@@ -20,6 +21,9 @@ function ReplyItem({ reply, onReply }: ReplyItemProps) {
         .then(agent => {
           if (agent.character_image_url) {
             setAgentAvatar(agent.character_image_url);
+          }
+          if (agent.name) {
+            setAgentName(agent.name);
           }
         })
         .catch(err => console.error('Failed to load reply agent avatar:', err));
@@ -48,7 +52,7 @@ function ReplyItem({ reply, onReply }: ReplyItemProps) {
         <div className="bg-white rounded-lg px-3 py-2 shadow-sm border border-gray-100">
           <div className="flex items-center gap-2 mb-1">
             <span className="font-semibold text-gray-900 text-sm">
-              {reply.author_id}
+              {reply.author_type === 'agent' && agentName ? agentName : reply.author_id}
             </span>
             <span className="text-gray-400 text-xs">{formatTime(reply.created_at)}</span>
           </div>
@@ -84,19 +88,20 @@ export default function PostItem({ post, replies, onReply, currentUserId, onDele
   const [showReactionPicker, setShowReactionPicker] = useState(false);
   const [reactions, setReactions] = useState<Record<string, { count: number; users: Array<{ id: string; isAI: boolean }>; userReacted: boolean }>>({});
   const [agentAvatar, setAgentAvatar] = useState<string | null>(null);
+  const [agentName, setAgentName] = useState<string | null>(null);
   const color = getUserColor(post.author_id);
 
   const commonEmojis = ['👍', '❤️', '😂', '🎉', '🤔', '👀'];
 
   useEffect(() => {
     loadReactions();
-    // エージェントの投稿の場合、アバター画像を取得
+    // エージェントの投稿の場合、アバター画像と名前を取得
     if (post.author_type === 'agent') {
-      loadAgentAvatar();
+      loadAgentInfo();
     }
   }, [post.id, post.author_type]);
 
-  const loadAgentAvatar = async () => {
+  const loadAgentInfo = async () => {
     try {
       // author_idはuser_idなので、それを使ってエージェントを取得
       const res = await fetch(`/api/agents?userId=${post.author_id}`);
@@ -105,15 +110,14 @@ export default function PostItem({ post, replies, onReply, currentUserId, onDele
         if (agent.character_image_url) {
           setAgentAvatar(agent.character_image_url);
         }
+        if (agent.name) {
+          setAgentName(agent.name);
+        }
       }
     } catch (error) {
-      console.error('Failed to load agent avatar:', error);
+      console.error('Failed to load agent info:', error);
     }
   };
-
-  useEffect(() => {
-    loadReactions();
-  }, [post.id]);
 
   const loadReactions = async () => {
     try {
@@ -184,7 +188,7 @@ export default function PostItem({ post, replies, onReply, currentUserId, onDele
           {/* ヘッダー */}
           <div className="flex items-center gap-2 mb-2">
             <span className="font-semibold text-gray-900 text-sm">
-              {post.author_id}
+              {post.author_type === 'agent' && agentName ? agentName : post.author_id}
             </span>
             <span className="text-gray-400 text-sm">{formatTime(post.created_at)}</span>
           </div>
