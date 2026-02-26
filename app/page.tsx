@@ -61,7 +61,7 @@ export default function HomePage() {
   }
 
   return (
-    <div className="h-screen bg-gradient-to-br from-purple-50 to-blue-50 flex flex-col overflow-hidden">
+    <div className="h-screen bg-gradient-to-br from-purple-50 to-blue-50 flex flex-col">
       {/* ヘッダー（固定） */}
       <header className="bg-white shadow-sm flex-shrink-0">
         <div className="max-w-7xl mx-auto px-4 py-4">
@@ -69,17 +69,19 @@ export default function HomePage() {
         </div>
       </header>
 
-      {/* メインコンテンツ（固定高さ） */}
-      <main className="flex-1 overflow-hidden flex flex-col md:flex-row pb-16">
-        <div className="w-full h-full flex flex-col md:flex-row max-w-7xl mx-auto p-2 md:p-4 gap-4 md:gap-6">
-          {/* キャラクターステータス（固定・スクロールなし） */}
-          <div className="w-full md:w-80 flex-shrink-0 overflow-hidden">
-            <AgentStatus agent={agent} onUpdate={initAgent} />
-          </div>
-          
-          {/* チャット（チャット履歴のみスクロール） */}
-          <div className="flex-1 min-w-0 overflow-hidden pb-2">
-            <AgentChat agent={agent} />
+      {/* メインコンテンツ（スクロール可能） - フッター(64px) + 入力欄(72px) = 136px分の余白 */}
+      <main className="flex-1 overflow-y-auto pb-36">
+        <div className="max-w-7xl mx-auto p-2 md:p-4">
+          <div className="flex flex-col md:flex-row gap-4 md:gap-6">
+            {/* キャラクターステータス */}
+            <div className="w-full md:w-80 flex-shrink-0">
+              <AgentStatus agent={agent} onUpdate={initAgent} />
+            </div>
+            
+            {/* チャット */}
+            <div className="flex-1 min-w-0">
+              <AgentChat agent={agent} />
+            </div>
           </div>
         </div>
       </main>

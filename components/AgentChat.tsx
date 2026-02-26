@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useRef } from 'react';
+import { useEffect, useState } from 'react';
 
 interface Agent {
   id: string;
@@ -23,15 +23,28 @@ export default function AgentChat({ agent }: Props) {
   const [input, setInput] = useState('');
   const [sending, setSending] = useState(false);
   const [levelUpNotification, setLevelUpNotification] = useState<{level: number, stage: number} | null>(null);
-  const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  const formatMessageTime = (timestamp: number) => {
+    const date = new Date(timestamp);
+    const now = new Date();
+    const diff = now.getTime() - date.getTime();
+    const hours = Math.floor(diff / (1000 * 60 * 60));
+    
+    // 24時間以内なら時刻のみ
+    if (hours < 24) {
+      return date.toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' });
+    }
+    
+    // それ以外は日付と時刻
+    const month = date.getMonth() + 1;
+    const day = date.getDate();
+    const time = date.toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' });
+    return `${month}/${day} ${time}`;
+  };
 
   useEffect(() => {
     fetchMessages();
   }, [agent.id]);
-
-  useEffect(() => {
-    scrollToBottom();
-  }, [messages]);
 
   const fetchMessages = async () => {
     try {
@@ -41,10 +54,6 @@ export default function AgentChat({ agent }: Props) {
     } catch (error) {
       console.error('Failed to fetch messages:', error);
     }
-  };
-
-  const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   };
 
   const handleSend = async () => {
@@ -101,10 +110,10 @@ export default function AgentChat({ agent }: Props) {
   };
 
   return (
-    <div className="bg-white rounded-lg shadow-md flex flex-col h-full relative overflow-hidden">
+    <>
       {/* レベルアップ通知 */}
       {levelUpNotification && (
-        <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 z-50 bg-gradient-to-r from-yellow-400 to-orange-400 text-white px-6 md:px-8 py-4 md:py-6 rounded-2xl shadow-2xl animate-bounce">
+        <div className="fixed top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 z-50 bg-gradient-to-r from-yellow-400 to-orange-400 text-white px-6 md:px-8 py-4 md:py-6 rounded-2xl shadow-2xl animate-bounce">
           <div className="text-center">
             <div className="text-4xl md:text-5xl mb-2">🎉</div>
             <div className="text-xl md:text-2xl font-bold mb-1">レベルアップ！</div>
@@ -113,42 +122,47 @@ export default function AgentChat({ agent }: Props) {
         </div>
       )}
 
-      {/* ヘッダー（固定） */}
-      <div className="p-3 md:p-4 border-b bg-gradient-to-r from-purple-50 to-blue-50 flex-shrink-0">
-        <h2 className="font-semibold text-gray-800 text-sm md:text-base">{agent.name}との会話</h2>
-      </div>
+      {/* チャットカード */}
+      <div className="bg-white rounded-lg shadow-md">
+        {/* ヘッダー */}
+        <div className="p-3 md:p-4 border-b bg-gradient-to-r from-purple-50 to-blue-50">
+          <h2 className="font-semibold text-gray-800 text-sm md:text-base">{agent.name}との会話</h2>
+        </div>
 
-      {/* メッセージエリア（スクロール可能） - flex-1で残りの高さを全て使用 */}
-      <div className="flex-1 overflow-y-auto p-3 md:p-4 space-y-2 md:space-y-3 bg-gray-50">
-        {messages.length === 0 ? (
-          <div className="text-center text-gray-400 mt-10 md:mt-20">
-            <p className="text-3xl md:text-4xl mb-3">💬</p>
-            <p className="text-sm md:text-base">話しかけてみよう</p>
-          </div>
-        ) : (
-          messages.map((msg) => (
-            <div
-              key={msg.id}
-              className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}
-            >
-              <div
-                className={`max-w-[85%] md:max-w-[75%] rounded-2xl px-3 md:px-4 py-2 md:py-3 shadow-sm ${
-                  msg.role === 'user'
-                    ? 'bg-purple-500 text-white rounded-br-sm'
-                    : 'bg-white text-gray-800 rounded-bl-sm border border-gray-200'
-                }`}
-              >
-                <p className="text-sm md:text-[15px] leading-relaxed whitespace-pre-wrap break-words">{msg.content}</p>
-              </div>
+        {/* メッセージエリア（スクロール可能） - 下部に余白を追加 */}
+        <div className="p-3 md:p-4 space-y-2 md:space-y-3 bg-gray-50 pb-32" style={{ minHeight: '400px' }}>
+          {messages.length === 0 ? (
+            <div className="text-center text-gray-400 mt-10 md:mt-20">
+              <p className="text-3xl md:text-4xl mb-3">💬</p>
+              <p className="text-sm md:text-base">話しかけてみよう</p>
             </div>
-          ))
-        )}
-        <div ref={messagesEndRef} />
+          ) : (
+            messages.map((msg) => (
+              <div
+                key={msg.id}
+                className={`flex flex-col ${msg.role === 'user' ? 'items-end' : 'items-start'}`}
+              >
+                <div
+                  className={`max-w-[85%] md:max-w-[75%] rounded-2xl px-3 md:px-4 py-2 md:py-3 shadow-sm ${
+                    msg.role === 'user'
+                      ? 'bg-purple-500 text-white rounded-br-sm'
+                      : 'bg-white text-gray-800 rounded-bl-sm border border-gray-200'
+                  }`}
+                >
+                  <p className="text-sm md:text-[15px] leading-relaxed whitespace-pre-wrap break-words">{msg.content}</p>
+                </div>
+                <span className="text-[10px] text-gray-400 mt-0.5 px-1">
+                  {formatMessageTime(msg.created_at)}
+                </span>
+              </div>
+            ))
+          )}
+        </div>
       </div>
 
-      {/* 入力エリア（固定） */}
-      <div className="p-2 md:p-3 border-t bg-white flex-shrink-0">
-        <div className="flex gap-2 items-end">
+      {/* 入力エリア（固定・フッターの真上） */}
+      <div className="fixed bottom-16 left-0 right-0 p-2 md:p-3 bg-white border-t shadow-lg z-40">
+        <div className="max-w-7xl mx-auto flex gap-2 items-end">
           <textarea
             value={input}
             onChange={(e) => setInput(e.target.value)}
@@ -187,6 +201,6 @@ export default function AgentChat({ agent }: Props) {
           </button>
         </div>
       </div>
-    </div>
+    </>
   );
 }

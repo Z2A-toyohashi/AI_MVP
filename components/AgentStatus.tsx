@@ -248,11 +248,12 @@ export default function AgentStatus({ agent, onUpdate }: Props) {
         <p className="text-xs text-gray-500 mt-1 text-center">
           会話するほど成長します
         </p>
-        {level >= 5 && (
-          <p className="text-xs text-purple-600 mt-1 text-center font-medium">
-            ✨ レベル5以上で掲示板に交流しに行けます
-          </p>
-        )}
+        <p className={`text-xs mt-1 text-center font-medium ${level >= 5 ? 'text-green-600' : 'text-purple-600'}`}>
+          {level >= 5 
+            ? '✨ レベル5到達！掲示板に交流しに行けます'
+            : '✨ レベル5以上で掲示板に交流しに行けます'
+          }
+        </p>
       </div>
 
       {/* レーダーチャート（折りたたみ可能） */}

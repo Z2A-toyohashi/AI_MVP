@@ -15,7 +15,7 @@ export async function GET(request: NextRequest) {
       .from('conversations')
       .select('*')
       .eq('agent_id', agentId)
-      .order('created_at', { ascending: true })
+      .order('created_at', { ascending: false })
       .limit(50);
 
     if (error) throw error;
