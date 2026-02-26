@@ -61,7 +61,7 @@ export default function HomePage() {
   }
 
   return (
-    <div className="h-screen bg-gradient-to-br from-purple-50 to-blue-50 flex flex-col overflow-hidden pb-16">
+    <div className="h-screen bg-gradient-to-br from-purple-50 to-blue-50 flex flex-col overflow-hidden">
       {/* ヘッダー（固定） */}
       <header className="bg-white shadow-sm flex-shrink-0">
         <div className="max-w-7xl mx-auto px-4 py-4">
@@ -70,7 +70,7 @@ export default function HomePage() {
       </header>
 
       {/* メインコンテンツ（固定高さ） */}
-      <main className="flex-1 overflow-hidden flex flex-col md:flex-row">
+      <main className="flex-1 overflow-hidden flex flex-col md:flex-row pb-16">
         <div className="w-full h-full flex flex-col md:flex-row max-w-7xl mx-auto p-2 md:p-4 gap-4 md:gap-6">
           {/* キャラクターステータス（固定・スクロールなし） */}
           <div className="w-full md:w-80 flex-shrink-0 overflow-hidden">
@@ -78,7 +78,7 @@ export default function HomePage() {
           </div>
           
           {/* チャット（チャット履歴のみスクロール） */}
-          <div className="flex-1 min-w-0 overflow-hidden">
+          <div className="flex-1 min-w-0 overflow-hidden pb-2">
             <AgentChat agent={agent} />
           </div>
         </div>
