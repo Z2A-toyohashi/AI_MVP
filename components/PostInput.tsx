@@ -251,7 +251,8 @@ export default function PostInput({
         onChange={(e) => setContent(e.target.value)}
         onKeyDown={handleKeyDown}
         placeholder={placeholder}
-        className="w-full resize-none border-0 focus:outline-none text-gray-900 text-[15px] placeholder-gray-400 mb-4 bg-transparent"
+        className="w-full resize-none border-0 focus:outline-none text-gray-900 placeholder-gray-400 mb-4 bg-transparent"
+        style={{ fontSize: '16px' }}
         rows={3}
       />
 

@@ -169,10 +169,11 @@ export default function AgentChat({ agent }: Props) {
             onKeyDown={handleKeyDown}
             placeholder="メッセージ"
             rows={1}
-            className="flex-1 px-3 md:px-4 py-2 md:py-3 border border-gray-300 rounded-full focus:outline-none focus:ring-2 focus:ring-purple-500 resize-none overflow-hidden min-h-[40px] md:min-h-[44px] max-h-[80px] md:max-h-[100px] text-sm md:text-base"
+            className="flex-1 px-3 md:px-4 py-2 md:py-3 border border-gray-300 rounded-full focus:outline-none focus:ring-2 focus:ring-purple-500 resize-none overflow-hidden min-h-[40px] md:min-h-[44px] max-h-[80px] md:max-h-[100px]"
             style={{
               height: 'auto',
               minHeight: '40px',
+              fontSize: '16px', // モバイルズーム防止
             }}
             onInput={(e) => {
               const target = e.target as HTMLTextAreaElement;
