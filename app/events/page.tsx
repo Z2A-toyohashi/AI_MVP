@@ -14,6 +14,7 @@ interface Event {
 interface Agent {
   id: string;
   name: string;
+  character_image_url?: string;
 }
 
 export default function EventsPage() {
@@ -49,10 +50,21 @@ export default function EventsPage() {
       meet: '👋',
       talk: '💬',
       fight: '⚔️',
-      explore: '🔍',
-      learn: '📚',
+      explore: '🌐',
+      learn: '📔',
     };
     return icons[type] || '✨';
+  };
+
+  const getEventTitle = (type: string) => {
+    const titles: Record<string, string> = {
+      meet: '出会い',
+      talk: '会話',
+      fight: '議論',
+      explore: '掲示板での活動',
+      learn: '今日の日記',
+    };
+    return titles[type] || 'イベント';
   };
 
   const formatDate = (timestamp: number) => {
@@ -64,7 +76,23 @@ export default function EventsPage() {
     if (hours < 1) return 'たった今';
     if (hours < 24) return `${hours}時間前`;
     const days = Math.floor(hours / 24);
-    return `${days}日前`;
+    if (days === 1) return '昨日';
+    if (days < 7) return `${days}日前`;
+    
+    // 日付表示
+    const month = date.getMonth() + 1;
+    const day = date.getDate();
+    return `${month}月${day}日`;
+  };
+
+  const formatFullDate = (timestamp: number) => {
+    const date = new Date(timestamp);
+    const year = date.getFullYear();
+    const month = date.getMonth() + 1;
+    const day = date.getDate();
+    const weekdays = ['日', '月', '火', '水', '木', '金', '土'];
+    const weekday = weekdays[date.getDay()];
+    return `${year}年${month}月${day}日（${weekday}）`;
   };
 
   if (loading) {
@@ -79,45 +107,93 @@ export default function EventsPage() {
     <div className="min-h-screen bg-gradient-to-br from-purple-50 to-blue-50 pb-16">
       <header className="bg-white shadow-sm">
         <div className="max-w-4xl mx-auto px-4 py-4">
-          <h1 className="text-2xl font-bold text-gray-800 text-center">帰還ログ</h1>
+          <h1 className="text-2xl font-bold text-gray-800 text-center">📔 {agent?.name}の日記</h1>
         </div>
       </header>
 
       <main className="max-w-4xl mx-auto p-4 mt-6">
-        <div className="bg-white rounded-lg shadow-md p-6">
-          <h2 className="text-lg font-semibold text-gray-800 mb-4">
-            {agent?.name}の冒険記録
-          </h2>
+        {/* キャラクター情報 */}
+        <div className="bg-white rounded-lg shadow-md p-6 mb-6">
+          <div className="flex items-center gap-4">
+            {agent?.character_image_url ? (
+              <div className="w-16 h-16 rounded-full overflow-hidden bg-gray-100 flex items-center justify-center flex-shrink-0">
+                <img 
+                  src={agent.character_image_url} 
+                  alt={agent.name}
+                  className="w-full h-full object-contain"
+                />
+              </div>
+            ) : (
+              <div className="w-16 h-16 rounded-full bg-purple-100 flex items-center justify-center text-2xl flex-shrink-0">
+                🐣
+              </div>
+            )}
+            <div>
+              <h2 className="text-xl font-bold text-gray-800">{agent?.name}の記録</h2>
+              <p className="text-sm text-gray-500">主人との日々、掲示板での出来事</p>
+            </div>
+          </div>
+        </div>
 
+        {/* イベント一覧 */}
+        <div className="space-y-4">
           {events.length === 0 ? (
-            <div className="text-center py-12 text-gray-400">
-              <p className="text-4xl mb-4">🌙</p>
-              <p>まだ外出していません</p>
-              <p className="text-sm mt-2">もっと会話すると、外に出かけるかも...</p>
+            <div className="bg-white rounded-lg shadow-md p-12 text-center">
+              <div className="text-gray-300 mb-4">
+                <div className="text-6xl mb-4">📖</div>
+              </div>
+              <p className="text-gray-400 text-lg mb-2">まだ日記がありません</p>
+              <p className="text-sm text-gray-500">
+                主人と会話したり、レベルが上がると<br />
+                日記が書かれるようになります
+              </p>
             </div>
           ) : (
-            <div className="space-y-4">
-              {events.map((event) => (
-                <div
-                  key={event.id}
-                  className={`p-4 rounded-lg border-2 transition-all ${
-                    event.is_read
-                      ? 'border-gray-200 bg-gray-50'
-                      : 'border-purple-300 bg-purple-50'
-                  }`}
-                >
-                  <div className="flex items-start gap-3">
-                    <div className="text-2xl">{getEventIcon(event.type)}</div>
-                    <div className="flex-1">
-                      <p className="text-gray-800">{event.content}</p>
-                      <p className="text-xs text-gray-500 mt-2">
-                        {formatDate(event.created_at)}
-                      </p>
+            events.map((event) => (
+              <div
+                key={event.id}
+                className={`bg-white rounded-lg shadow-md overflow-hidden transition-all hover:shadow-lg ${
+                  event.is_read ? '' : 'ring-2 ring-purple-300'
+                }`}
+              >
+                {/* ヘッダー */}
+                <div className="bg-gradient-to-r from-purple-50 to-blue-50 px-6 py-3 border-b border-gray-200">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <span className="text-2xl">{getEventIcon(event.type)}</span>
+                      <div>
+                        <h3 className="font-semibold text-gray-800">{getEventTitle(event.type)}</h3>
+                        <p className="text-xs text-gray-500">{formatFullDate(event.created_at)}</p>
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-xs text-gray-500">{formatDate(event.created_at)}</p>
+                      {!event.is_read && (
+                        <span className="inline-block mt-1 px-2 py-0.5 bg-purple-500 text-white text-xs rounded-full">
+                          NEW
+                        </span>
+                      )}
                     </div>
                   </div>
                 </div>
-              ))}
-            </div>
+
+                {/* コンテンツ */}
+                <div className="px-6 py-5">
+                  <p className="text-gray-800 leading-relaxed whitespace-pre-wrap">
+                    {event.content}
+                  </p>
+                </div>
+
+                {/* フッター（日記タイプの場合） */}
+                {event.type === 'learn' && (
+                  <div className="px-6 py-3 bg-gray-50 border-t border-gray-200">
+                    <p className="text-xs text-gray-500 text-center">
+                      ✨ この日の思い出
+                    </p>
+                  </div>
+                )}
+              </div>
+            ))
           )}
         </div>
       </main>
@@ -139,9 +215,9 @@ export default function EventsPage() {
           </a>
           <a href="/events" className="flex flex-col items-center justify-center flex-1 text-purple-600 transition-colors">
             <svg className="w-6 h-6 mb-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
             </svg>
-            <span className="text-xs">帰還ログ</span>
+            <span className="text-xs">日記</span>
           </a>
         </div>
       </nav>

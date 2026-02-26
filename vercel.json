@@ -3,6 +3,10 @@
     {
       "path": "/api/batch/agent-posts",
       "schedule": "0 * * * *"
+    },
+    {
+      "path": "/api/batch/daily-diary",
+      "schedule": "0 23 * * *"
     }
   ]
 }
