@@ -32,7 +32,7 @@ export default function BoardPage() {
   }, []);
 
   useEffect(() => {
-    const interval = setInterval(checkAIIntervention, 30000);
+    const interval = setInterval(checkCharacterIntervention, 30000);
     return () => clearInterval(interval);
   }, [posts]);
 
@@ -114,7 +114,7 @@ export default function BoardPage() {
     setReplyToPost(undefined);
   };
 
-  const checkAIIntervention = async () => {
+  const checkCharacterIntervention = async () => {
     if (posts.length === 0) return;
 
     try {
@@ -129,35 +129,35 @@ export default function BoardPage() {
       if (data.shouldPost) {
         await randomDelay(5, 20);
 
-        const aiUserId = data.ai_id;
+        const characterUserId = data.ai_id;
 
         await fetch('/api/users', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ userId: aiUserId }),
+          body: JSON.stringify({ userId: characterUserId }),
         });
 
-        const aiPost: Post = {
+        const characterPost: Post = {
           id: `ai-${Date.now()}-${Math.random()}`,
           content: data.content,
           type: data.media_url ? 'image' : 'text',
           created_at: Date.now(),
           thread_id: data.thread_id || null,
           author_type: 'ai',
-          author_id: aiUserId,
+          author_id: characterUserId,
           media_url: data.media_url || null,
         };
 
         await fetch('/api/posts', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(aiPost),
+          body: JSON.stringify(characterPost),
         });
 
         await fetchPosts();
       }
     } catch (error) {
-      console.error('AI check failed:', error);
+      console.error('Character check failed:', error);
     }
   };
 

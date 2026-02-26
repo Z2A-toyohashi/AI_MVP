@@ -9,7 +9,7 @@ interface Agent {
 
 interface Message {
   id: string;
-  role: 'user' | 'ai';
+  role: 'user' | 'assistant';
   content: string;
   created_at: number;
 }

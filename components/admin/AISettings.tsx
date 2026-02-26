@@ -108,9 +108,9 @@ export default function AISettings({ currentAIDensity }: AISettingsProps) {
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
         <div>
           <h2 className="text-lg sm:text-xl font-bold text-gray-800 flex items-center gap-2">
-            🤖 AI設定
+            🤖 システム設定
           </h2>
-          <p className="text-xs text-gray-500 mt-1">AIの振る舞いとパラメータを調整</p>
+          <p className="text-xs text-gray-500 mt-1">キャラクターの振る舞いとパラメータを調整</p>
         </div>
         <div className="flex gap-2">
           <button
@@ -146,7 +146,7 @@ export default function AISettings({ currentAIDensity }: AISettingsProps) {
             value={systemPrompt}
             onChange={(e) => setSystemPrompt(e.target.value)}
             className="w-full h-48 sm:h-64 px-3 sm:px-4 py-2 sm:py-3 border-2 border-blue-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-xs sm:text-sm font-mono shadow-inner bg-white"
-            placeholder="AIの振る舞いを定義するプロンプトを入力..."
+            placeholder="キャラクターの振る舞いを定義するプロンプトを入力..."
           />
           <p className="text-xs text-gray-600 mt-2">💡 短く簡潔な応答を促すプロンプトを設定してください</p>
         </div>
@@ -198,7 +198,7 @@ export default function AISettings({ currentAIDensity }: AISettingsProps) {
             {/* 介入確率設定 - 簡略化 */}
             <div className="bg-white rounded-xl p-5 shadow-md border-2 border-purple-200">
               <h4 className="text-sm font-bold text-gray-800 mb-4 pb-2 border-b-2 border-purple-300 flex items-center gap-2">
-                <span>🎲</span> AI介入確率（簡易設定）
+                <span>🎲</span> 介入確率（簡易設定）
               </h4>
               
               <div className="space-y-4">
@@ -320,7 +320,7 @@ export default function AISettings({ currentAIDensity }: AISettingsProps) {
               
               <div className="space-y-4">
                 <div>
-                  <label className="block text-xs font-semibold text-gray-700 mb-2">最大AI密度</label>
+                  <label className="block text-xs font-semibold text-gray-700 mb-2">最大密度</label>
                   <input type="number" step="0.05" min="0" max="1" value={maxAIDensity} onChange={(e) => setMaxAIDensity(Number(e.target.value))} className="w-full px-3 py-2 border-2 border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500" />
                   <div className="mt-2 bg-green-100 rounded-full h-3 overflow-hidden shadow-inner">
                     <div className="bg-gradient-to-r from-green-400 to-green-600 h-full transition-all" style={{ width: `${maxAIDensity * 100}%` }}></div>
@@ -336,7 +336,7 @@ export default function AISettings({ currentAIDensity }: AISettingsProps) {
                 <div className="bg-gradient-to-br from-blue-50 to-purple-50 rounded-lg p-4 border-2 border-blue-200 mt-6">
                   <h5 className="text-xs font-bold text-gray-800 mb-2 flex items-center gap-1"><span>💡</span> 推奨設定</h5>
                   <ul className="text-xs text-gray-600 space-y-1.5">
-                    {['AI密度: 10-20%', 'クールダウン: 5-15分', '応答文字数: 5-15文字', 'SOLO確率: 40-60%'].map((tip) => (
+                    {['密度: 10-20%', 'クールダウン: 5-15分', '応答文字数: 5-15文字', 'SOLO確率: 40-60%'].map((tip) => (
                       <li key={tip} className="flex items-start gap-2"><span className="text-green-500">✓</span><span>{tip}</span></li>
                     ))}
                   </ul>

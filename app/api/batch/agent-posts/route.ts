@@ -34,122 +34,143 @@ export async function GET(request: NextRequest) {
       });
     }
 
-    const results = [];
+    // 投稿可能なエージェントをフィルタリング（最低4時間空いている）
+    const eligibleAgents = agents.filter(agent => {
+      const lastPostAt = agent.last_post_at || 0;
+      const hoursSinceLastPost = (now - lastPostAt) / (1000 * 60 * 60);
+      return hoursSinceLastPost >= 4;
+    });
 
-    // 各エージェントについて、ランダムで投稿するか決定
-    for (const agent of agents) {
+    if (eligibleAgents.length === 0) {
+      return NextResponse.json({ 
+        message: 'No agents ready to post (all in cooldown)',
+        posted: 0,
+      });
+    }
+
+    // 時間経過に応じて重み付けしてランダムに1エージェントを選択
+    const agentsWithWeights = eligibleAgents.map(agent => {
       const lastPostAt = agent.last_post_at || 0;
       const hoursSinceLastPost = (now - lastPostAt) / (1000 * 60 * 60);
       
-      // 最低4時間は空ける（投稿しすぎ防止）
-      if (hoursSinceLastPost < 4) {
-        continue;
+      // 時間経過に応じて重みを増やす
+      let weight = 1;
+      if (hoursSinceLastPost >= 24) weight = 10;
+      else if (hoursSinceLastPost >= 12) weight = 6;
+      else if (hoursSinceLastPost >= 8) weight = 3;
+      
+      return { agent, weight, hoursSinceLastPost };
+    });
+
+    // 重み付きランダム選択
+    const totalWeight = agentsWithWeights.reduce((sum, item) => sum + item.weight, 0);
+    let random = Math.random() * totalWeight;
+    let selectedItem = agentsWithWeights[0];
+    
+    for (const item of agentsWithWeights) {
+      random -= item.weight;
+      if (random <= 0) {
+        selectedItem = item;
+        break;
       }
-      
-      // 時間経過に応じて投稿確率を上げる
-      // 4時間: 5%, 8時間: 15%, 12時間: 30%, 24時間以上: 50%
-      let postProbability = 0.05;
-      if (hoursSinceLastPost >= 24) postProbability = 0.5;
-      else if (hoursSinceLastPost >= 12) postProbability = 0.3;
-      else if (hoursSinceLastPost >= 8) postProbability = 0.15;
-      
-      const shouldPost = Math.random() < postProbability;
-      
-      if (!shouldPost) continue;
+    }
 
-      try {
-        // ナレッジベースを取得
-        const { data: knowledgeData } = await supabase
-          .from('agent_knowledge')
-          .select('*')
-          .eq('agent_id', agent.id)
-          .order('importance', { ascending: false })
-          .order('last_referenced_at', { ascending: false })
-          .limit(5);
+    const agent = selectedItem.agent;
+    const hoursSinceLastPost = selectedItem.hoursSinceLastPost;
+    const results = [];
 
-        // 最近の会話を取得
-        const { data: recentConversations } = await supabase
-          .from('conversations')
-          .select('*')
-          .eq('agent_id', agent.id)
-          .order('created_at', { ascending: false })
-          .limit(10);
+    try {
+      // ナレッジベースを取得
+      const { data: knowledgeData } = await supabase
+        .from('agent_knowledge')
+        .select('*')
+        .eq('agent_id', agent.id)
+        .order('importance', { ascending: false })
+        .order('last_referenced_at', { ascending: false })
+        .limit(5);
 
-        // 投稿内容を生成
-        const content = await generatePersonalPost(
-          agent, 
-          knowledgeData || [], 
-          recentConversations || []
-        );
+      // 最近の会話を取得
+      const { data: recentConversations } = await supabase
+        .from('conversations')
+        .select('*')
+        .eq('agent_id', agent.id)
+        .order('created_at', { ascending: false })
+        .limit(10);
 
-        // 掲示板に投稿
-        const post = {
-          id: `agent-${Date.now()}-${Math.random()}`,
-          content,
-          type: 'text',
-          created_at: now,
-          thread_id: null,
-          author_type: 'agent',
-          author_id: agent.user_id,
-          media_url: null,
-        };
+      // 投稿内容を生成
+      const content = await generatePersonalPost(
+        agent, 
+        knowledgeData || [], 
+        recentConversations || []
+      );
 
-        // usersテーブルにユーザーが存在することを確認
-        const { data: existingUser } = await supabase
+      // 掲示板に投稿
+      const post = {
+        id: `agent-${Date.now()}-${Math.random()}`,
+        content,
+        type: 'text',
+        created_at: now,
+        thread_id: null,
+        author_type: 'agent',
+        author_id: agent.user_id,
+        media_url: null,
+      };
+
+      // usersテーブルにユーザーが存在することを確認
+      const { data: existingUser } = await supabase
+        .from('users')
+        .select('id')
+        .eq('id', agent.user_id)
+        .single();
+
+      if (!existingUser) {
+        await supabase
           .from('users')
-          .select('id')
-          .eq('id', agent.user_id)
-          .single();
-
-        if (!existingUser) {
-          await supabase
-            .from('users')
-            .insert({
-              id: agent.user_id,
-              created_at: now,
-              last_seen: now,
-            });
-        }
-
-        const { error: postError } = await supabase
-          .from('posts')
-          .insert(post);
-
-        if (postError) throw postError;
-
-        // エージェントの最終投稿時刻を更新
-        await supabase
-          .from('agents')
-          .update({ last_post_at: now })
-          .eq('id', agent.id);
-
-        // イベントとして記録
-        await supabase
-          .from('events')
           .insert({
-            agent_id: agent.id,
-            type: 'explore',
-            content: `掲示板に投稿した: "${content}"`,
+            id: agent.user_id,
             created_at: now,
-            is_read: false,
+            last_seen: now,
           });
-
-        results.push({
-          agentId: agent.id,
-          agentName: agent.name,
-          success: true,
-          content,
-          hoursSinceLastPost: Math.round(hoursSinceLastPost * 10) / 10,
-        });
-      } catch (error) {
-        console.error(`Failed to post for agent ${agent.id}:`, error);
-        results.push({
-          agentId: agent.id,
-          agentName: agent.name,
-          success: false,
-          error: String(error),
-        });
       }
+
+      const { error: postError } = await supabase
+        .from('posts')
+        .insert(post);
+
+      if (postError) throw postError;
+
+      // エージェントの最終投稿時刻を更新
+      await supabase
+        .from('agents')
+        .update({ last_post_at: now })
+        .eq('id', agent.id);
+
+      // イベントとして記録
+      await supabase
+        .from('events')
+        .insert({
+          agent_id: agent.id,
+          type: 'explore',
+          content: `掲示板に投稿した: "${content}"`,
+          created_at: now,
+          is_read: false,
+        });
+
+      results.push({
+        agentId: agent.id,
+        agentName: agent.name,
+        success: true,
+        content,
+        hoursSinceLastPost: Math.round(hoursSinceLastPost * 10) / 10,
+      });
+    } catch (error) {
+      console.error(`Failed to post for agent ${agent.id}:`, error);
+      results.push({
+        agentId: agent.id,
+        agentName: agent.name,
+        success: false,
+        error: String(error),
+      });
     }
 
     return NextResponse.json({

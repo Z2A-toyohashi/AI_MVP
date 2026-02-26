@@ -9,8 +9,8 @@ export default function AdminHeader() {
   const pathname = usePathname();
 
   const menuItems = [
-    { label: '⚙️ AI設定', path: '/admin' },
-    { label: '🤖 AIキャラクター', path: '/admin/ai-characters' },
+    { label: '⚙️ システム設定', path: '/admin' },
+    { label: '🤖 キャラクター', path: '/admin/ai-characters' },
     { label: '👥 エージェント管理', path: '/admin/agents' },
     { label: '📊 メトリクス', path: '/admin/metrics' },
     { label: '💬 チャットログ', path: '/admin/chat-log' },
@@ -27,7 +27,7 @@ export default function AdminHeader() {
             <h1 className="text-xl sm:text-2xl font-bold bg-gradient-to-r from-blue-600 to-indigo-600 bg-clip-text text-transparent">
               🎛️ 管理画面
             </h1>
-            <p className="text-xs sm:text-sm text-gray-600 mt-1">AI共存空間の管理と分析</p>
+            <p className="text-xs sm:text-sm text-gray-600 mt-1">共存空間の管理と分析</p>
           </div>
           <button
             onClick={() => setMenuOpen(!menuOpen)}

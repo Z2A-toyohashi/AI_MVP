@@ -17,11 +17,11 @@ export default function AdminPage() {
       const data = await res.json();
       if (data.posts) {
         const recentPosts = data.posts.slice(0, 20);
-        const aiPosts = recentPosts.filter((p: any) => p.author_type === 'ai' || p.author_type === 'agent');
-        setCurrentAIDensity(aiPosts.length / recentPosts.length);
+        const agentPosts = recentPosts.filter((p: any) => p.author_type === 'ai' || p.author_type === 'agent');
+        setCurrentAIDensity(agentPosts.length / recentPosts.length);
       }
     } catch (error) {
-      console.error('Failed to load AI density:', error);
+      console.error('Failed to load density:', error);
     }
   };
 

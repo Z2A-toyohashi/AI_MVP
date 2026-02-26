@@ -316,7 +316,7 @@ export default function PostItem({ post, replies, onReply, currentUserId, onDele
                           />
                           <span>{user.id}</span>
                           {user.isAI && (
-                            <span className="text-[10px] bg-indigo-500 px-1.5 py-0.5 rounded-full">🤖AI</span>
+                            <span className="text-[10px] bg-indigo-500 px-1.5 py-0.5 rounded-full">🤖</span>
                           )}
                         </div>
                       ))}
