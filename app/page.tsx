@@ -80,12 +80,6 @@ export default function HomePage() {
       media_url: mediaUrl || null,
     };
 
-    console.log('=== Posting ===');
-    console.log('Reply to:', replyTo);
-    console.log('Reply to post:', replyToPost);
-    console.log('Post object:', post);
-    console.log('===============');
-
     try {
       await fetch('/api/posts', {
         method: 'POST',
@@ -102,24 +96,13 @@ export default function HomePage() {
   };
 
   const handleReply = (threadId: string) => {
-    // threadIdが返信の場合は、その返信が属するスレッドのルート投稿を探す
     const clickedPost = posts.find(p => p.id === threadId);
     
-    console.log('=== Reply Debug ===');
-    console.log('Clicked post ID:', threadId);
-    console.log('Clicked post:', clickedPost);
-    
     if (clickedPost) {
-      // クリックされた投稿が返信の場合は、そのthread_idを使用
-      // そうでなければ、クリックされた投稿自体がルート投稿
       const rootThreadId = clickedPost.thread_id || clickedPost.id;
       const rootPost = clickedPost.thread_id 
         ? posts.find(p => p.id === clickedPost.thread_id)
         : clickedPost;
-      
-      console.log('Root thread ID:', rootThreadId);
-      console.log('Root post:', rootPost);
-      console.log('==================');
       
       setReplyTo(rootThreadId);
       setReplyToPost(rootPost);
@@ -146,7 +129,7 @@ export default function HomePage() {
       if (data.shouldPost) {
         await randomDelay(5, 20);
 
-        const aiUserId = data.ai_id; // AIキャラクターのIDを使用
+        const aiUserId = data.ai_id;
 
         await fetch('/api/users', {
           method: 'POST',
@@ -183,13 +166,6 @@ export default function HomePage() {
   };
 
   const topLevelPosts = posts.filter((p) => !p.thread_id);
-  
-  console.log('=== Posts Debug ===');
-  console.log('Total posts:', posts.length);
-  console.log('Top level posts:', topLevelPosts.length);
-  console.log('Posts with thread_id:', posts.filter(p => p.thread_id).length);
-  console.log('All posts:', posts.map(p => ({ id: p.id, thread_id: p.thread_id, content: p.content.slice(0, 20) })));
-  console.log('==================');
 
   if (loading) {
     return (
@@ -204,9 +180,7 @@ export default function HomePage() {
       <div className="w-full max-w-2xl bg-white min-h-screen shadow-lg">
         <Header userId={userId} title="空間" />
 
-        {/* メインコンテンツ */}
         <main className="pb-8">
-          {/* 投稿入力 */}
           <div className="border-b-4 border-gray-200 shadow-sm bg-white">
             <PostInput
               onPost={handlePost}
@@ -217,7 +191,6 @@ export default function HomePage() {
             />
           </div>
 
-          {/* タイムライン */}
           <div className="bg-white">
             {topLevelPosts.length === 0 ? (
               <div className="py-20 text-center">

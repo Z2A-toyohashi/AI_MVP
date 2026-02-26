@@ -4,6 +4,76 @@ import { useState, useEffect } from 'react';
 import type { Post } from '@/types';
 import { getUserColor, formatTime } from '@/lib/utils';
 
+interface ReplyItemProps {
+  reply: Post;
+  onReply: (threadId: string) => void;
+}
+
+function ReplyItem({ reply, onReply }: ReplyItemProps) {
+  const [agentAvatar, setAgentAvatar] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (reply.author_type === 'agent') {
+      fetch(`/api/agents?userId=${reply.author_id}`)
+        .then(res => res.json())
+        .then(agent => {
+          if (agent.character_image_url) {
+            setAgentAvatar(agent.character_image_url);
+          }
+        })
+        .catch(err => console.error('Failed to load reply agent avatar:', err));
+    }
+  }, [reply.author_id, reply.author_type]);
+
+  return (
+    <div className="flex gap-2.5">
+      {reply.author_type === 'agent' && agentAvatar ? (
+        <div className="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 shadow-sm ring-2 ring-purple-200 overflow-hidden bg-white">
+          <img 
+            src={agentAvatar} 
+            alt="Agent avatar"
+            className="w-full h-full object-cover"
+          />
+        </div>
+      ) : (
+        <div
+          className="w-8 h-8 rounded-full flex items-center justify-center text-white text-xs font-semibold flex-shrink-0 shadow-sm ring-2 ring-white"
+          style={{ backgroundColor: getUserColor(reply.author_id) }}
+        >
+          {reply.author_id.slice(-2)}
+        </div>
+      )}
+      <div className="flex-1 min-w-0">
+        <div className="bg-white rounded-lg px-3 py-2 shadow-sm border border-gray-100">
+          <div className="flex items-center gap-2 mb-1">
+            <span className="font-semibold text-gray-900 text-sm">
+              {reply.author_id}
+            </span>
+            {reply.author_type === 'agent' && (
+              <span className="text-xs bg-purple-100 text-purple-700 px-1.5 py-0.5 rounded-full font-medium">
+                🤖
+              </span>
+            )}
+            <span className="text-gray-400 text-xs">{formatTime(reply.created_at)}</span>
+          </div>
+          <p className="text-sm text-gray-900 whitespace-pre-wrap break-words leading-relaxed">
+            {reply.content}
+          </p>
+        </div>
+        <button
+          onClick={() => onReply(reply.id)}
+          className="text-gray-400 hover:text-blue-600 transition-colors flex items-center gap-1 text-xs font-medium mt-1 ml-1"
+        >
+          <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6" />
+          </svg>
+          返信
+        </button>
+      </div>
+    </div>
+  );
+}
+
 interface PostItemProps {
   post: Post;
   replies: Post[];
@@ -17,9 +87,32 @@ export default function PostItem({ post, replies, onReply, currentUserId, onDele
   const [showReplies, setShowReplies] = useState(false); // デフォルトで閉じる
   const [showReactionPicker, setShowReactionPicker] = useState(false);
   const [reactions, setReactions] = useState<Record<string, { count: number; users: Array<{ id: string; isAI: boolean }>; userReacted: boolean }>>({});
+  const [agentAvatar, setAgentAvatar] = useState<string | null>(null);
   const color = getUserColor(post.author_id);
 
   const commonEmojis = ['👍', '❤️', '😂', '🎉', '🤔', '👀'];
+
+  useEffect(() => {
+    loadReactions();
+    // エージェントの投稿の場合、アバター画像を取得
+    if (post.author_type === 'agent') {
+      loadAgentAvatar();
+    }
+  }, [post.id, post.author_type]);
+
+  const loadAgentAvatar = async () => {
+    try {
+      const res = await fetch(`/api/agents?userId=${post.author_id}`);
+      if (res.ok) {
+        const agent = await res.json();
+        if (agent.character_image_url) {
+          setAgentAvatar(agent.character_image_url);
+        }
+      }
+    } catch (error) {
+      console.error('Failed to load agent avatar:', error);
+    }
+  };
 
   useEffect(() => {
     loadReactions();
@@ -73,12 +166,22 @@ export default function PostItem({ post, replies, onReply, currentUserId, onDele
     <article className="border-b border-gray-200 px-4 py-6 hover:bg-gray-50/50 transition-colors">
       <div className="flex gap-3">
         {/* アバター */}
-        <div
-          className="w-10 h-10 rounded-full flex items-center justify-center text-white font-semibold text-sm flex-shrink-0 shadow-md ring-2 ring-white"
-          style={{ backgroundColor: color }}
-        >
-          {post.author_id.slice(-2)}
-        </div>
+        {post.author_type === 'agent' && agentAvatar ? (
+          <div className="w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 shadow-md ring-2 ring-purple-200 overflow-hidden bg-white">
+            <img 
+              src={agentAvatar} 
+              alt="Agent avatar"
+              className="w-full h-full object-cover"
+            />
+          </div>
+        ) : (
+          <div
+            className="w-10 h-10 rounded-full flex items-center justify-center text-white font-semibold text-sm flex-shrink-0 shadow-md ring-2 ring-white"
+            style={{ backgroundColor: color }}
+          >
+            {post.author_id.slice(-2)}
+          </div>
+        )}
 
         <div className="flex-1 min-w-0">
           {/* ヘッダー */}
@@ -86,6 +189,11 @@ export default function PostItem({ post, replies, onReply, currentUserId, onDele
             <span className="font-semibold text-gray-900 text-sm">
               {post.author_id}
             </span>
+            {post.author_type === 'agent' && (
+              <span className="text-xs bg-purple-100 text-purple-700 px-2 py-0.5 rounded-full font-medium">
+                🤖 AI
+              </span>
+            )}
             <span className="text-gray-400 text-sm">{formatTime(post.created_at)}</span>
           </div>
 
@@ -231,37 +339,11 @@ export default function PostItem({ post, replies, onReply, currentUserId, onDele
           {showReplies && replies.length > 0 && (
             <div className="mt-5 space-y-4 pl-4 border-l-2 border-blue-200 bg-blue-50/30 py-3 rounded-r-lg">
               {replies.sort((a, b) => a.created_at - b.created_at).map((reply) => (
-                <div key={reply.id} className="flex gap-2.5">
-                  <div
-                    className="w-8 h-8 rounded-full flex items-center justify-center text-white text-xs font-semibold flex-shrink-0 shadow-sm ring-2 ring-white"
-                    style={{ backgroundColor: getUserColor(reply.author_id) }}
-                  >
-                    {reply.author_id.slice(-2)}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="bg-white rounded-lg px-3 py-2 shadow-sm border border-gray-100">
-                      <div className="flex items-center gap-2 mb-1">
-                        <span className="font-semibold text-gray-900 text-sm">
-                          {reply.author_id}
-                        </span>
-                        <span className="text-gray-400 text-xs">{formatTime(reply.created_at)}</span>
-                      </div>
-                      <p className="text-sm text-gray-900 whitespace-pre-wrap break-words leading-relaxed">
-                        {reply.content}
-                      </p>
-                    </div>
-                    {/* 返信への返信ボタン */}
-                    <button
-                      onClick={() => onReply(reply.id)}
-                      className="text-gray-400 hover:text-blue-600 transition-colors flex items-center gap-1 text-xs font-medium mt-1 ml-1"
-                    >
-                      <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6" />
-                      </svg>
-                      返信
-                    </button>
-                  </div>
-                </div>
+                <ReplyItem 
+                  key={reply.id} 
+                  reply={reply} 
+                  onReply={onReply}
+                />
               ))}
             </div>
           )}
