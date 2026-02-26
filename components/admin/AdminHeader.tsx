@@ -11,6 +11,7 @@ export default function AdminHeader() {
   const menuItems = [
     { label: '⚙️ AI設定', path: '/admin' },
     { label: '🤖 AIキャラクター', path: '/admin/ai-characters' },
+    { label: '👥 エージェント管理', path: '/admin/agents' },
     { label: '📊 メトリクス', path: '/admin/metrics' },
     { label: '💬 チャットログ', path: '/admin/chat-log' },
     { label: '📝 フィードバック', path: '/admin/feedback' },

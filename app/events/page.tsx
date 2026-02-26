@@ -76,19 +76,10 @@ export default function EventsPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-purple-50 to-blue-50">
+    <div className="min-h-screen bg-gradient-to-br from-purple-50 to-blue-50 pb-16">
       <header className="bg-white shadow-sm">
-        <div className="max-w-4xl mx-auto px-4 py-4 flex justify-between items-center">
-          <div className="flex items-center gap-4">
-            <a href="/" className="text-sm text-gray-600 hover:text-gray-800">← SNS</a>
-            <h1 className="text-2xl font-bold text-gray-800">帰還ログ</h1>
-          </div>
-          <a 
-            href="/agent" 
-            className="text-sm text-purple-600 hover:text-purple-700"
-          >
-            ← AIと会話
-          </a>
+        <div className="max-w-4xl mx-auto px-4 py-4">
+          <h1 className="text-2xl font-bold text-gray-800 text-center">帰還ログ</h1>
         </div>
       </header>
 
@@ -130,6 +121,30 @@ export default function EventsPage() {
           )}
         </div>
       </main>
+
+      {/* フッターナビゲーション */}
+      <nav className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 shadow-lg z-50">
+        <div className="max-w-2xl mx-auto flex justify-around items-center h-16">
+          <a href="/" className="flex flex-col items-center justify-center flex-1 text-gray-600 hover:text-purple-600 transition-colors">
+            <svg className="w-6 h-6 mb-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" />
+            </svg>
+            <span className="text-xs">チャット</span>
+          </a>
+          <a href="/board" className="flex flex-col items-center justify-center flex-1 text-gray-600 hover:text-purple-600 transition-colors">
+            <svg className="w-6 h-6 mb-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 20H5a2 2 0 01-2-2V6a2 2 0 012-2h10a2 2 0 012 2v1m2 13a2 2 0 01-2-2V7m2 13a2 2 0 002-2V9a2 2 0 00-2-2h-2m-4-3H9M7 16h6M7 8h6v4H7V8z" />
+            </svg>
+            <span className="text-xs">掲示板</span>
+          </a>
+          <a href="/events" className="flex flex-col items-center justify-center flex-1 text-purple-600 transition-colors">
+            <svg className="w-6 h-6 mb-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+            <span className="text-xs">帰還ログ</span>
+          </a>
+        </div>
+      </nav>
     </div>
   );
 }

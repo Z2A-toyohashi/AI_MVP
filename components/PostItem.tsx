@@ -14,6 +14,7 @@ function ReplyItem({ reply, onReply }: ReplyItemProps) {
 
   useEffect(() => {
     if (reply.author_type === 'agent') {
+      // author_idはuser_idなので、それを使ってエージェントを取得
       fetch(`/api/agents?userId=${reply.author_id}`)
         .then(res => res.json())
         .then(agent => {
@@ -49,11 +50,6 @@ function ReplyItem({ reply, onReply }: ReplyItemProps) {
             <span className="font-semibold text-gray-900 text-sm">
               {reply.author_id}
             </span>
-            {reply.author_type === 'agent' && (
-              <span className="text-xs bg-purple-100 text-purple-700 px-1.5 py-0.5 rounded-full font-medium">
-                🤖
-              </span>
-            )}
             <span className="text-gray-400 text-xs">{formatTime(reply.created_at)}</span>
           </div>
           <p className="text-sm text-gray-900 whitespace-pre-wrap break-words leading-relaxed">
@@ -102,6 +98,7 @@ export default function PostItem({ post, replies, onReply, currentUserId, onDele
 
   const loadAgentAvatar = async () => {
     try {
+      // author_idはuser_idなので、それを使ってエージェントを取得
       const res = await fetch(`/api/agents?userId=${post.author_id}`);
       if (res.ok) {
         const agent = await res.json();
@@ -189,11 +186,6 @@ export default function PostItem({ post, replies, onReply, currentUserId, onDele
             <span className="font-semibold text-gray-900 text-sm">
               {post.author_id}
             </span>
-            {post.author_type === 'agent' && (
-              <span className="text-xs bg-purple-100 text-purple-700 px-2 py-0.5 rounded-full font-medium">
-                🤖 AI
-              </span>
-            )}
             <span className="text-gray-400 text-sm">{formatTime(post.created_at)}</span>
           </div>
 

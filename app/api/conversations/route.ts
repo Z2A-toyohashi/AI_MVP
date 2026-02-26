@@ -92,6 +92,14 @@ export async function POST(request: NextRequest) {
 // エージェントの進化ロジック
 async function updateAgentProgress(supabase: any, agentId: string, agent: any, content: string) {
   const newPersonality = { ...agent.personality };
+  
+  // 8次元の性格パラメータを初期化
+  if (!newPersonality.creative) newPersonality.creative = 0;
+  if (!newPersonality.logical) newPersonality.logical = 0;
+  if (!newPersonality.emotional) newPersonality.emotional = 0;
+  if (!newPersonality.adventurous) newPersonality.adventurous = 0;
+  if (!newPersonality.cautious) newPersonality.cautious = 0;
+  
   let experience = agent.experience || 0;
   let level = agent.level || 1;
   let appearanceStage = agent.appearance_stage || 1;
@@ -127,11 +135,14 @@ async function updateAgentProgress(supabase: any, agentId: string, agent: any, c
     }
   }
   
+  // 性格パラメータの更新（8次元）
+  
   // ネガティブワード検出
   const negativeWords = ['悲しい', '辛い', '嫌', '疲れた', 'つらい', '寂しい', '不安'];
   const hasNegative = negativeWords.some(word => content.includes(word));
   if (hasNegative) {
     newPersonality.positive = Math.max(-10, (newPersonality.positive || 0) - 1);
+    newPersonality.emotional = Math.min(10, (newPersonality.emotional || 0) + 0.5);
   } else {
     newPersonality.positive = Math.min(10, (newPersonality.positive || 0) + 0.5);
   }
@@ -145,6 +156,38 @@ async function updateAgentProgress(supabase: any, agentId: string, agent: any, c
   if (content.includes('?') || content.includes('？')) {
     newPersonality.curious = Math.min(10, (newPersonality.curious || 0) + 1);
   }
+  
+  // 創造性（比喩や想像的な表現）
+  const creativeWords = ['みたい', 'ような', 'もし', '想像', 'アイデア', '面白い'];
+  if (creativeWords.some(word => content.includes(word))) {
+    newPersonality.creative = Math.min(10, (newPersonality.creative || 0) + 0.5);
+  }
+  
+  // 論理性（理由や説明）
+  const logicalWords = ['なぜ', 'だから', 'なので', '理由', '説明', 'つまり'];
+  if (logicalWords.some(word => content.includes(word))) {
+    newPersonality.logical = Math.min(10, (newPersonality.logical || 0) + 0.5);
+  }
+  
+  // 冒険心（新しいことへの興味）
+  const adventurousWords = ['やってみたい', '試したい', '挑戦', '新しい', '行きたい'];
+  if (adventurousWords.some(word => content.includes(word))) {
+    newPersonality.adventurous = Math.min(10, (newPersonality.adventurous || 0) + 0.5);
+  }
+  
+  // 慎重さ（心配や確認）
+  const cautiousWords = ['大丈夫', '心配', '確認', '注意', '気をつけ'];
+  if (cautiousWords.some(word => content.includes(word))) {
+    newPersonality.cautious = Math.min(10, (newPersonality.cautious || 0) + 0.5);
+  }
+
+  // 会話からナレッジを抽出（5回に1回）
+  const conversationCount = await getConversationCount(supabase, agentId);
+  if (conversationCount % 5 === 0) {
+    extractKnowledge(supabase, agentId, content).catch(err => {
+      console.error('Failed to extract knowledge:', err);
+    });
+  }
 
   // 更新を保存
   const updates: any = { 
@@ -155,7 +198,7 @@ async function updateAgentProgress(supabase: any, agentId: string, agent: any, c
     last_active_at: Date.now(),
   };
 
-  // レベル5以上でSNS投稿可能
+  // レベル5以上で掲示板投稿可能
   if (level >= 5) {
     updates.can_post_to_sns = true;
   }
@@ -171,6 +214,75 @@ async function updateAgentProgress(supabase: any, agentId: string, agent: any, c
     newStage: appearanceStage,
     canPostToSns: level >= 5,
   };
+}
+
+// 会話数を取得
+async function getConversationCount(supabase: any, agentId: string): Promise<number> {
+  const { count } = await supabase
+    .from('conversations')
+    .select('*', { count: 'exact', head: true })
+    .eq('agent_id', agentId);
+  return count || 0;
+}
+
+// 会話からナレッジを抽出
+async function extractKnowledge(supabase: any, agentId: string, userMessage: string) {
+  try {
+    // 最近の会話を取得
+    const { data: recentConversations } = await supabase
+      .from('conversations')
+      .select('*')
+      .eq('agent_id', agentId)
+      .order('created_at', { ascending: false })
+      .limit(10);
+
+    if (!recentConversations || recentConversations.length < 3) return;
+
+    // GPTで会話を要約してトピックを抽出
+    const OpenAI = (await import('openai')).default;
+    const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+
+    const conversationText = recentConversations
+      .reverse()
+      .map(c => `${c.role}: ${c.content}`)
+      .join('\n');
+
+    const completion = await openai.chat.completions.create({
+      model: 'gpt-4o-mini',
+      messages: [
+        {
+          role: 'system',
+          content: `会話から重要なトピックと要約を抽出してください。
+JSON形式で返してください: {"topic": "トピック名", "summary": "要約（50文字以内）", "importance": 1-5}
+ユーザーの好み、興味、考え方、日常について話した内容を重視してください。`
+        },
+        { role: 'user', content: conversationText }
+      ],
+      temperature: 0.7,
+      max_tokens: 150,
+    });
+
+    const result = completion.choices[0]?.message?.content;
+    if (!result) return;
+
+    const knowledge = JSON.parse(result);
+    
+    // ナレッジを保存
+    await supabase
+      .from('agent_knowledge')
+      .insert({
+        agent_id: agentId,
+        topic: knowledge.topic,
+        summary: knowledge.summary,
+        importance: knowledge.importance || 3,
+        created_at: Date.now(),
+        last_referenced_at: Date.now(),
+      });
+
+    console.log('Knowledge extracted:', knowledge);
+  } catch (error) {
+    console.error('Error extracting knowledge:', error);
+  }
 }
 
 // キャラクター画像生成
@@ -199,7 +311,7 @@ async function generateCharacterImage(supabase: any, agentId: string, personalit
       'a fully developed unique cute creature with strong character'
     ];
     
-    const prompt = `A cute kawaii character, ${stageDescriptions[stage - 1]}, ${mood}, ${energy}${trait}. Simple design, pastel colors, transparent background, PNG style, no text, centered, full body visible.`;
+    const prompt = `A cute kawaii character, ${stageDescriptions[stage - 1]}, ${mood}, ${energy}${trait}. Simple flat design, pastel colors, completely transparent background, PNG format, no shadows, no background elements, centered composition, isolated character only, full body visible, clean edges.`;
     
     console.log('Generating character image with prompt:', prompt);
     
@@ -213,6 +325,7 @@ async function generateCharacterImage(supabase: any, agentId: string, personalit
       n: 1,
       size: '1024x1024',
       quality: 'standard',
+      style: 'natural', // naturalスタイルでよりシンプルに
     });
 
     const imageUrl = response.data[0]?.url;

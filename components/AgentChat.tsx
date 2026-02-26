@@ -73,10 +73,10 @@ export default function AgentChat({ agent }: Props) {
           setLevelUpNotification({ level: data.newLevel, stage: data.newStage });
           setTimeout(() => setLevelUpNotification(null), 4000);
           
-          // レベル5到達でSNS解放通知
+          // レベル5到達で掲示板解放通知
           if (data.canPostToSns && data.newLevel === 5) {
             setTimeout(() => {
-              alert('🎉 おめでとう！レベル5到達でSNS「空間」に投稿できるようになりました！');
+              alert('🎉 おめでとう！レベル5到達で掲示板に投稿できるようになりました！');
             }, 4000);
           }
           

@@ -9,6 +9,11 @@ interface Agent {
     positive: number;
     talkative: number;
     curious: number;
+    creative?: number;
+    logical?: number;
+    emotional?: number;
+    adventurous?: number;
+    cautious?: number;
   };
   level: number;
   experience: number;
@@ -26,8 +31,9 @@ interface Props {
 export default function AgentStatus({ agent, onUpdate }: Props) {
   const { personality, level, experience, appearance_stage } = agent;
   const [posting, setPosting] = useState(false);
+  const [showPersonality, setShowPersonality] = useState(false);
 
-  const handlePostToSns = async () => {
+  const handlePostToBbs = async () => {
     if (posting || !agent.can_post_to_sns) return;
 
     setPosting(true);
@@ -39,14 +45,14 @@ export default function AgentStatus({ agent, onUpdate }: Props) {
       });
 
       if (res.ok) {
-        alert('SNSに投稿しました！');
+        alert('掲示板に投稿しました！');
         onUpdate();
       } else {
         const data = await res.json();
         alert(data.error || '投稿に失敗しました');
       }
     } catch (error) {
-      console.error('Failed to post to SNS:', error);
+      console.error('Failed to post to board:', error);
       alert('投稿に失敗しました');
     } finally {
       setPosting(false);
@@ -59,37 +65,80 @@ export default function AgentStatus({ agent, onUpdate }: Props) {
   };
 
   const getExpProgress = () => {
-    const expNeeded = level * 30; // プロトタイプ用に簡単
+    const expNeeded = level * 30;
     return (experience / expNeeded) * 100;
   };
 
-  const getPersonalityBar = (value: number, label: string) => {
-    const normalized = ((value + 10) / 20) * 100;
-    return (
-      <div className="mb-3">
-        <div className="flex justify-between text-xs text-gray-600 mb-1">
-          <span>{label}</span>
-          <span>{value > 0 ? '+' : ''}{value}</span>
-        </div>
-        <div className="w-full bg-gray-200 rounded-full h-2">
-          <div
-            className="bg-purple-500 h-2 rounded-full transition-all"
-            style={{ width: `${normalized}%` }}
-          />
-        </div>
-      </div>
-    );
+  // レーダーチャート用のデータ
+  const getRadarChartPoints = () => {
+    const dimensions = [
+      { label: 'ポジティブ', value: personality.positive || 0 },
+      { label: 'おしゃべり', value: personality.talkative || 0 },
+      { label: '好奇心', value: personality.curious || 0 },
+      { label: '創造性', value: personality.creative || 0 },
+      { label: '論理性', value: personality.logical || 0 },
+      { label: '感情的', value: personality.emotional || 0 },
+      { label: '冒険心', value: personality.adventurous || 0 },
+      { label: '慎重さ', value: personality.cautious || 0 },
+    ];
+
+    const centerX = 100;
+    const centerY = 100;
+    const maxRadius = 80;
+    const angleStep = (2 * Math.PI) / dimensions.length;
+
+    // 背景の円（グリッド）
+    const gridCircles = [0.25, 0.5, 0.75, 1.0].map(ratio => {
+      const r = maxRadius * ratio;
+      return `M ${centerX + r},${centerY} A ${r},${r} 0 1,0 ${centerX - r},${centerY} A ${r},${r} 0 1,0 ${centerX + r},${centerY}`;
+    });
+
+    // 軸線
+    const axisLines = dimensions.map((_, i) => {
+      const angle = i * angleStep - Math.PI / 2;
+      const x = centerX + maxRadius * Math.cos(angle);
+      const y = centerY + maxRadius * Math.sin(angle);
+      return `M ${centerX},${centerY} L ${x},${y}`;
+    });
+
+    // データポイント
+    const dataPoints = dimensions.map((dim, i) => {
+      const angle = i * angleStep - Math.PI / 2;
+      const normalized = (dim.value + 10) / 20; // -10~10 を 0~1 に正規化
+      const r = maxRadius * normalized;
+      const x = centerX + r * Math.cos(angle);
+      const y = centerY + r * Math.sin(angle);
+      return { x, y };
+    });
+
+    const dataPath = dataPoints.map((p, i) => 
+      `${i === 0 ? 'M' : 'L'} ${p.x},${p.y}`
+    ).join(' ') + ' Z';
+
+    // ラベル位置
+    const labels = dimensions.map((dim, i) => {
+      const angle = i * angleStep - Math.PI / 2;
+      const labelRadius = maxRadius + 20;
+      const x = centerX + labelRadius * Math.cos(angle);
+      const y = centerY + labelRadius * Math.sin(angle);
+      return { label: dim.label, x, y, value: dim.value };
+    });
+
+    return { gridCircles, axisLines, dataPath, labels };
   };
+
+  const radarData = getRadarChartPoints();
 
   return (
     <div className="bg-white rounded-lg shadow-md p-4 md:p-6">
       <div className="text-center mb-4 md:mb-6">
         {agent.character_image_url ? (
-          <div className="w-24 h-24 md:w-32 md:h-32 mx-auto mb-2 relative">
+          <div className="w-32 h-32 md:w-40 md:h-40 mx-auto mb-2 bg-gray-50 rounded-lg flex items-center justify-center overflow-hidden">
             <img 
               src={agent.character_image_url} 
               alt={agent.name}
               className="w-full h-full object-contain"
+              style={{ imageRendering: 'crisp-edges' }}
             />
           </div>
         ) : (
@@ -98,7 +147,7 @@ export default function AgentStatus({ agent, onUpdate }: Props) {
         <h2 className="text-lg md:text-xl font-bold text-gray-800">{agent.name}</h2>
         <p className="text-xs md:text-sm text-gray-500">レベル {level}</p>
         {agent.can_post_to_sns && (
-          <p className="text-xs text-green-600 mt-1">✨ SNS投稿可能</p>
+          <p className="text-xs text-green-600 mt-1">✨ 掲示板投稿可能</p>
         )}
       </div>
 
@@ -117,13 +166,71 @@ export default function AgentStatus({ agent, onUpdate }: Props) {
         <p className="text-xs text-gray-500 mt-1 text-center">
           会話するほど成長します
         </p>
+        {level >= 5 && (
+          <p className="text-xs text-purple-600 mt-1 text-center font-medium">
+            ✨ レベル5以上で掲示板に交流しに行けます
+          </p>
+        )}
       </div>
 
-      <div className="space-y-1">
-        <h3 className="text-xs md:text-sm font-semibold text-gray-700 mb-2 md:mb-3">性格</h3>
-        {getPersonalityBar(personality.positive, 'ポジティブ')}
-        {getPersonalityBar(personality.talkative, 'おしゃべり')}
-        {getPersonalityBar(personality.curious, '好奇心')}
+      {/* レーダーチャート（折りたたみ可能） */}
+      <div className="mb-4 md:mb-6">
+        <button
+          onClick={() => setShowPersonality(!showPersonality)}
+          className="w-full flex items-center justify-between text-xs md:text-sm font-semibold text-gray-700 mb-2 hover:text-purple-600 transition-colors"
+        >
+          <span>性格</span>
+          <span className="text-lg">{showPersonality ? '▼' : '▶'}</span>
+        </button>
+        
+        {showPersonality && (
+          <div className="mt-3">
+            <svg viewBox="0 0 200 200" className="w-full max-w-xs mx-auto">
+              {/* グリッド */}
+              {radarData.gridCircles.map((path, i) => (
+                <path
+                  key={`grid-${i}`}
+                  d={path}
+                  fill="none"
+                  stroke="#e5e7eb"
+                  strokeWidth="1"
+                />
+              ))}
+              
+              {/* 軸線 */}
+              {radarData.axisLines.map((path, i) => (
+                <path
+                  key={`axis-${i}`}
+                  d={path}
+                  stroke="#d1d5db"
+                  strokeWidth="1"
+                />
+              ))}
+              
+              {/* データ */}
+              <path
+                d={radarData.dataPath}
+                fill="rgba(147, 51, 234, 0.2)"
+                stroke="rgb(147, 51, 234)"
+                strokeWidth="2"
+              />
+              
+              {/* ラベル */}
+              {radarData.labels.map((label, i) => (
+                <text
+                  key={`label-${i}`}
+                  x={label.x}
+                  y={label.y}
+                  textAnchor="middle"
+                  dominantBaseline="middle"
+                  className="text-[8px] fill-gray-600 font-medium"
+                >
+                  {label.label}
+                </text>
+              ))}
+            </svg>
+          </div>
+        )}
       </div>
 
       {agent.is_outside && (
@@ -137,11 +244,11 @@ export default function AgentStatus({ agent, onUpdate }: Props) {
       {agent.can_post_to_sns && (
         <div className="mt-4 md:mt-6">
           <button
-            onClick={handlePostToSns}
+            onClick={handlePostToBbs}
             disabled={posting}
             className="w-full py-2 md:py-3 bg-gradient-to-r from-blue-500 to-purple-500 text-white rounded-lg hover:from-blue-600 hover:to-purple-600 disabled:from-gray-300 disabled:to-gray-400 disabled:cursor-not-allowed transition-all font-semibold shadow-md text-sm md:text-base"
           >
-            {posting ? '投稿中...' : '🌐 SNS「空間」に投稿'}
+            {posting ? '投稿中...' : '🌐 掲示板に投稿'}
           </button>
           <p className="text-xs text-gray-500 mt-2 text-center">
             レベル5到達で解放されました！

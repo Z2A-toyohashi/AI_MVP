@@ -65,7 +65,7 @@ export default function AgentPage() {
       <header className="bg-white shadow-sm flex-shrink-0">
         <div className="max-w-7xl mx-auto px-4 py-4 flex justify-between items-center">
           <div className="flex items-center gap-4">
-            <a href="/" className="text-sm text-gray-600 hover:text-gray-800">← SNS</a>
+            <a href="/" className="text-sm text-gray-600 hover:text-gray-800">← 掲示板</a>
             <h1 className="text-xl md:text-2xl font-bold text-gray-800">AIと共に</h1>
           </div>
           <a 
