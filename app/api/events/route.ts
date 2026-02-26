@@ -5,11 +5,27 @@ import { getServerSupabase } from '@/lib/supabase-client';
 export async function GET(request: NextRequest) {
   try {
     const agentId = request.nextUrl.searchParams.get('agentId');
+    const countOnly = request.nextUrl.searchParams.get('countOnly');
+    
     if (!agentId) {
       return NextResponse.json({ error: 'agentId required' }, { status: 400 });
     }
 
     const supabase = getServerSupabase();
+    
+    // 未読数のみを取得
+    if (countOnly === 'true') {
+      const { count, error } = await supabase
+        .from('events')
+        .select('*', { count: 'exact', head: true })
+        .eq('agent_id', agentId)
+        .eq('is_read', false);
+
+      if (error) throw error;
+      return NextResponse.json({ unreadCount: count || 0 });
+    }
+
+    // イベント一覧を取得
     const { data, error } = await supabase
       .from('events')
       .select('*')
