@@ -244,7 +244,7 @@ async function extractKnowledge(supabase: any, agentId: string, userMessage: str
 
     const conversationText = recentConversations
       .reverse()
-      .map(c => `${c.role}: ${c.content}`)
+      .map((c: any) => `${c.role}: ${c.content}`)
       .join('\n');
 
     const completion = await openai.chat.completions.create({
@@ -328,7 +328,7 @@ async function generateCharacterImage(supabase: any, agentId: string, personalit
       style: 'natural', // naturalスタイルでよりシンプルに
     });
 
-    const imageUrl = response.data[0]?.url;
+    const imageUrl = response.data?.[0]?.url;
     if (!imageUrl) throw new Error('No image URL returned');
 
     // 画像をダウンロード

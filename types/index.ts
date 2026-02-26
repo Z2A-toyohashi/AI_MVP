@@ -5,7 +5,7 @@ export interface Post {
   type: 'text' | 'voice' | 'image';
   created_at: number;
   thread_id: string | null;
-  author_type: 'user' | 'ai';
+  author_type: 'user' | 'ai' | 'agent';
   author_id: string;
   media_url: string | null;
 }
