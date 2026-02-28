@@ -6,7 +6,7 @@
     },
     {
       "path": "/api/batch/daily-diary",
-      "schedule": "0 23 * * *"
+      "schedule": "0 14 * * *"
     }
   ]
 }

@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { after } from 'next/server';
 import { getServerSupabase } from '@/lib/supabase-client';
 import { generateAIResponse } from '@/lib/agent-chat';
 
@@ -118,7 +119,10 @@ export async function POST(request: NextRequest) {
         created_at: now,
       });
 
-    if (userError) throw userError;
+    if (userError) {
+      console.error('Failed to save user message:', userError);
+      return NextResponse.json({ error: 'Failed to save message', details: userError.message }, { status: 500 });
+    }
 
     // 会話履歴を取得（直近20件、古い順）
     const { data: history } = await supabase
@@ -145,14 +149,33 @@ export async function POST(request: NextRequest) {
 
     if (aiError) throw aiError;
 
-    // エージェントの性格と経験値を更新
-    const updates = await updateAgentProgress(supabase, agentId, agent, content);
+    // レベルアップ判定だけ先に同期で行う（UIに即反映するため）
+    const expGain = Math.min(Math.floor(20 + content.length / 3), 50);
+    const newExp = (agent.experience || 0) + expGain;
+    const currentLevel = agent.level || 1;
+    const expNeeded = currentLevel * 30;
+    let levelUpResult = { levelUp: false, newLevel: currentLevel, newStage: agent.appearance_stage || 1 };
+
+    if (newExp >= expNeeded) {
+      const newLevel = currentLevel + 1;
+      const newStage = newLevel >= 9 ? 5 : newLevel >= 7 ? 4 : newLevel >= 5 ? 3 : newLevel >= 3 ? 2 : 1;
+      levelUpResult = { levelUp: true, newLevel, newStage };
+    }
+
+    // DB更新・画像生成・ナレッジ抽出はレスポンス後に非同期実行（タイムアウト対策）
+    after(async () => {
+      try {
+        await updateAgentProgress(supabase, agentId, agent, content);
+      } catch (e) {
+        console.error('updateAgentProgress error:', e);
+      }
+    });
 
     return NextResponse.json({ 
       response: aiResponse,
-      levelUp: updates.levelUp,
-      newLevel: updates.newLevel,
-      newStage: updates.newStage,
+      levelUp: levelUpResult.levelUp,
+      newLevel: levelUpResult.newLevel,
+      newStage: levelUpResult.newStage,
     });
   } catch (error) {
     console.error('Error in POST /api/conversations:', error);
