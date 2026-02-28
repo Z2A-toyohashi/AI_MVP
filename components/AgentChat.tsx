@@ -1,207 +1,224 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 
 interface Agent {
   id: string;
   name: string;
+  appearance_stage: number;
+  character_image_url?: string;
 }
 
 interface Message {
   id: string;
-  role: 'user' | 'assistant';
+  role: 'user' | 'assistant' | 'ai';
   content: string;
   created_at: number;
 }
 
 interface Props {
   agent: Agent;
+  onLevelUp?: () => void;
 }
 
-export default function AgentChat({ agent }: Props) {
+export default function AgentChat({ agent, onLevelUp }: Props) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
   const [sending, setSending] = useState(false);
-  const [levelUpNotification, setLevelUpNotification] = useState<{level: number, stage: number} | null>(null);
+  const [levelUpNotification, setLevelUpNotification] = useState<{ level: number } | null>(null);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
 
-  const formatMessageTime = (timestamp: number) => {
-    const date = new Date(timestamp);
+  const stageEmoji = ['🥚','🐣','🐥','🐤','🦜'][Math.min(agent.appearance_stage - 1, 4)];
+
+  const formatTime = (ts: number) => {
+    const d = new Date(ts);
     const now = new Date();
-    const diff = now.getTime() - date.getTime();
-    const hours = Math.floor(diff / (1000 * 60 * 60));
-    
-    // 24時間以内なら時刻のみ
-    if (hours < 24) {
-      return date.toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' });
-    }
-    
-    // それ以外は日付と時刻
-    const month = date.getMonth() + 1;
-    const day = date.getDate();
-    const time = date.toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' });
-    return `${month}/${day} ${time}`;
+    const diff = now.getTime() - d.getTime();
+    if (diff < 86400000) return d.toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' });
+    return `${d.getMonth() + 1}/${d.getDate()} ${d.toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' })}`;
   };
 
-  useEffect(() => {
-    fetchMessages();
-  }, [agent.id]);
+  useEffect(() => { fetchMessages(); }, [agent.id]);
+  useEffect(() => { messagesEndRef.current?.scrollIntoView({ behavior: 'instant' }); }, [messages]);
 
   const fetchMessages = async () => {
     try {
       const res = await fetch(`/api/conversations?agentId=${agent.id}`);
       const data = await res.json();
-      setMessages(data);
-    } catch (error) {
-      console.error('Failed to fetch messages:', error);
+      setMessages(Array.isArray(data) ? data : []);
+    } catch (e) {
+      console.error(e);
     }
   };
 
   const handleSend = async () => {
     if (!input.trim() || sending) return;
-
     setSending(true);
-    const userMessage = input.trim();
+    const msg = input.trim();
     setInput('');
+    if (textareaRef.current) textareaRef.current.style.height = 'auto';
 
     try {
       const res = await fetch('/api/conversations', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          agentId: agent.id,
-          content: userMessage,
-        }),
+        body: JSON.stringify({ agentId: agent.id, content: msg }),
       });
-
       if (res.ok) {
         const data = await res.json();
         await fetchMessages();
-        
-        // レベルアップ通知
         if (data.levelUp) {
-          setLevelUpNotification({ level: data.newLevel, stage: data.newStage });
-          setTimeout(() => setLevelUpNotification(null), 4000);
-          
-          // レベル5到達で掲示板解放通知
-          if (data.canPostToSns && data.newLevel === 5) {
-            setTimeout(() => {
-              alert('🎉 おめでとう！レベル5到達で掲示板に投稿できるようになりました！');
-            }, 4000);
-          }
-          
-          // 親コンポーネントに通知（リロード）
-          setTimeout(() => {
-            window.location.reload();
-          }, 4500);
+          setLevelUpNotification({ level: data.newLevel });
+          setTimeout(() => setLevelUpNotification(null), 3000);
+          setTimeout(() => { onLevelUp?.(); }, 3200);
         }
       }
-    } catch (error) {
-      console.error('Failed to send message:', error);
+    } catch (e) {
+      console.error(e);
     } finally {
       setSending(false);
     }
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault();
-      handleSend();
-    }
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); }
   };
 
+  const isAI = (role: string) => role === 'assistant' || role === 'ai';
+
   return (
-    <>
+    <div className="h-full flex flex-col">
       {/* レベルアップ通知 */}
       {levelUpNotification && (
-        <div className="fixed top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 z-50 bg-gradient-to-r from-yellow-400 to-orange-400 text-white px-6 md:px-8 py-4 md:py-6 rounded-2xl shadow-2xl animate-bounce">
-          <div className="text-center">
-            <div className="text-4xl md:text-5xl mb-2">🎉</div>
-            <div className="text-xl md:text-2xl font-bold mb-1">レベルアップ！</div>
-            <div className="text-base md:text-lg">レベル {levelUpNotification.level}</div>
+        <div className="fixed inset-0 flex items-center justify-center z-50 pointer-events-none">
+          <div className="animate-levelup bg-[#ffd900] text-gray-800 px-10 py-8 rounded-3xl shadow-2xl text-center border-4 border-[#ffb800]">
+            <div className="text-5xl mb-2">🎉</div>
+            <div className="text-2xl font-black">レベルアップ！</div>
+            <div className="text-4xl font-black text-[#ff9600] mt-1">Lv.{levelUpNotification.level}</div>
           </div>
         </div>
       )}
 
-      {/* チャットカード */}
-      <div className="bg-white rounded-lg shadow-md">
-        {/* ヘッダー */}
-        <div className="p-3 md:p-4 border-b bg-gradient-to-r from-purple-50 to-blue-50">
-          <h2 className="font-semibold text-gray-800 text-sm md:text-base">{agent.name}との会話</h2>
-        </div>
-
-        {/* メッセージエリア（スクロール可能） - 下部に余白を追加 */}
-        <div className="p-3 md:p-4 space-y-2 md:space-y-3 bg-gray-50 pb-32" style={{ minHeight: '400px' }}>
-          {messages.length === 0 ? (
-            <div className="text-center text-gray-400 mt-10 md:mt-20">
-              <p className="text-3xl md:text-4xl mb-3">💬</p>
-              <p className="text-sm md:text-base">話しかけてみよう</p>
+      {/* メッセージエリア（入力欄の高さ分だけ下に余白） */}
+      <div className="flex-1 overflow-y-auto px-4 py-4 space-y-4">
+        {messages.length === 0 ? (
+          <div className="h-full flex flex-col items-center justify-center text-center gap-4 py-8 px-2">
+            <div className="w-24 h-24 rounded-3xl bg-[#fff9e6] border-3 border-[#ffd900] flex items-center justify-center text-5xl shadow-lg">
+              {agent.character_image_url ? (
+                <img src={agent.character_image_url} alt={agent.name} className="w-full h-full object-contain rounded-3xl" />
+              ) : stageEmoji}
             </div>
-          ) : (
-            messages.map((msg) => (
-              <div
-                key={msg.id}
-                className={`flex flex-col ${msg.role === 'user' ? 'items-end' : 'items-start'}`}
-              >
-                <div
-                  className={`max-w-[85%] md:max-w-[75%] rounded-2xl px-3 md:px-4 py-2 md:py-3 shadow-sm ${
-                    msg.role === 'user'
-                      ? 'bg-purple-500 text-white rounded-br-sm'
-                      : 'bg-white text-gray-800 rounded-bl-sm border border-gray-200'
-                  }`}
-                >
-                  <p className="text-sm md:text-[15px] leading-relaxed whitespace-pre-wrap break-words">{msg.content}</p>
+            <div>
+              <p className="font-black text-gray-800 text-xl">{agent.name}</p>
+              <p className="text-gray-400 font-bold text-sm mt-1">あなただけのAIパートナー</p>
+            </div>
+
+            {/* アプリの流れを説明するカード */}
+            <div className="w-full max-w-xs space-y-2 mt-2">
+              {[
+                { step: '1', icon: '💬', title: '話しかける', desc: '会話するとXPがもらえる' },
+                { step: '2', icon: '🌱', title: '性格が育つ', desc: '話し方でキャラが変わる' },
+                { step: '3', icon: '🎨', title: '見た目が進化', desc: 'Lv.3・5・7・9で変身' },
+                { step: '4', icon: '📋', title: '掲示板に参加', desc: 'Lv.5で解放される' },
+              ].map(({ step, icon, title, desc }) => (
+                <div key={step} className="flex items-center gap-3 bg-white border-2 border-gray-100 rounded-2xl px-4 py-3 text-left">
+                  <div className="w-7 h-7 rounded-full bg-[#58cc02] flex items-center justify-center flex-shrink-0">
+                    <span className="text-white text-xs font-black">{step}</span>
+                  </div>
+                  <span className="text-xl flex-shrink-0">{icon}</span>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-black text-gray-800">{title}</p>
+                    <p className="text-xs font-bold text-gray-400">{desc}</p>
+                  </div>
                 </div>
-                <span className="text-[10px] text-gray-400 mt-0.5 px-1">
-                  {formatMessageTime(msg.created_at)}
+              ))}
+            </div>
+
+            <div className="bg-[#f0fce4] border-2 border-[#58cc02] rounded-2xl px-6 py-3 w-full max-w-xs">
+              <p className="text-[#58cc02] font-black text-sm text-center">↓ まず話しかけてみよう！</p>
+            </div>
+          </div>
+        ) : (
+          messages.map((msg) => (
+            <div key={msg.id} className={`flex items-end gap-2 ${isAI(msg.role) ? 'justify-start' : 'justify-end'}`}>
+              {/* AIアイコン（左側） */}
+              {isAI(msg.role) && (
+                <div className="w-9 h-9 rounded-2xl bg-[#fff9e6] border-2 border-[#ffd900] flex items-center justify-center flex-shrink-0 overflow-hidden mb-1">
+                  {agent.character_image_url ? (
+                    <img src={agent.character_image_url} alt={agent.name} className="w-full h-full object-contain" />
+                  ) : (
+                    <span className="text-lg">{stageEmoji}</span>
+                  )}
+                </div>
+              )}
+
+              <div className={`flex flex-col max-w-[75%] ${isAI(msg.role) ? 'items-start' : 'items-end'}`}>
+                <div className={isAI(msg.role) ? 'bubble-ai px-4 py-3' : 'bubble-user px-4 py-3'}>
+                  <p className="text-sm font-semibold text-gray-800 leading-relaxed whitespace-pre-wrap break-words">
+                    {msg.content}
+                  </p>
+                </div>
+                <span className="text-[10px] text-gray-400 font-bold mt-1 px-1">
+                  {formatTime(msg.created_at)}
                 </span>
               </div>
-            ))
-          )}
-        </div>
+            </div>
+          ))
+        )}
+        {sending && (
+          <div className="flex items-end gap-2 justify-start">
+            <div className="w-9 h-9 rounded-2xl bg-[#fff9e6] border-2 border-[#ffd900] flex items-center justify-center flex-shrink-0 overflow-hidden">
+              {agent.character_image_url ? (
+                <img src={agent.character_image_url} alt={agent.name} className="w-full h-full object-contain" />
+              ) : <span className="text-lg">{stageEmoji}</span>}
+            </div>
+            <div className="bubble-ai px-4 py-3">
+              <div className="flex gap-1 items-center h-5">
+                <span className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
+                <span className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
+                <span className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
+              </div>
+            </div>
+          </div>
+        )}
+        <div ref={messagesEndRef} />
       </div>
 
-      {/* 入力エリア（固定・フッターの真上） */}
-      <div className="fixed bottom-16 left-0 right-0 p-2 md:p-3 bg-white border-t shadow-lg z-40">
-        <div className="max-w-7xl mx-auto flex gap-2 items-end">
+      {/* 入力エリア */}
+      <div className="flex-shrink-0 px-4 py-3 bg-white border-t border-gray-100 pb-safe">
+        <div className="flex items-end gap-2 max-w-lg mx-auto">
           <textarea
+            ref={textareaRef}
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={handleKeyDown}
-            placeholder="メッセージ"
+            placeholder={`${agent.name}に話しかける...`}
             rows={1}
-            className="flex-1 px-3 md:px-4 py-2 md:py-3 border border-gray-300 rounded-full focus:outline-none focus:ring-2 focus:ring-purple-500 resize-none overflow-hidden min-h-[40px] md:min-h-[44px] max-h-[80px] md:max-h-[100px]"
-            style={{
-              height: 'auto',
-              minHeight: '40px',
-              fontSize: '16px', // モバイルズーム防止
-            }}
-            onInput={(e) => {
-              const target = e.target as HTMLTextAreaElement;
-              target.style.height = 'auto';
-              const maxHeight = window.innerWidth < 768 ? 80 : 100;
-              target.style.height = Math.min(target.scrollHeight, maxHeight) + 'px';
-            }}
             disabled={sending}
+            className="flex-1 px-4 py-3 bg-gray-100 rounded-2xl border-2 border-transparent focus:border-[#84d8ff] focus:bg-white focus:outline-none resize-none text-sm font-semibold text-gray-800 placeholder-gray-400 transition-all"
+            style={{ minHeight: '48px', maxHeight: '120px', fontSize: '16px' }}
+            onInput={(e) => {
+              const t = e.target as HTMLTextAreaElement;
+              t.style.height = 'auto';
+              t.style.height = Math.min(t.scrollHeight, 120) + 'px';
+            }}
           />
           <button
             onClick={handleSend}
             disabled={!input.trim() || sending}
-            className="w-10 h-10 md:w-11 md:h-11 flex items-center justify-center bg-purple-500 text-white rounded-full hover:bg-purple-600 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors flex-shrink-0"
-            title={sending ? '送信中...' : '送信'}
+            className="w-12 h-12 flex items-center justify-center rounded-2xl flex-shrink-0 transition-all"
+            style={{
+              background: input.trim() && !sending ? '#58cc02' : '#e5e5e5',
+              boxShadow: input.trim() && !sending ? '0 4px 0 #46a302' : '0 4px 0 #c4c4c4',
+            }}
           >
-            {sending ? (
-              <svg className="animate-spin h-4 w-4 md:h-5 md:w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-              </svg>
-            ) : (
-              <svg className="w-4 h-4 md:w-5 md:h-5" fill="currentColor" viewBox="0 0 20 20">
-                <path d="M10.894 2.553a1 1 0 00-1.788 0l-7 14a1 1 0 001.169 1.409l5-1.429A1 1 0 009 15.571V11a1 1 0 112 0v4.571a1 1 0 00.725.962l5 1.428a1 1 0 001.17-1.408l-7-14z" />
-              </svg>
-            )}
+            <svg className="w-5 h-5 text-white" fill="currentColor" viewBox="0 0 20 20">
+              <path d="M10.894 2.553a1 1 0 00-1.788 0l-7 14a1 1 0 001.169 1.409l5-1.429A1 1 0 009 15.571V11a1 1 0 112 0v4.571a1 1 0 00.725.962l5 1.428a1 1 0 001.17-1.408l-7-14z" />
+            </svg>
           </button>
         </div>
       </div>
-    </>
+    </div>
   );
 }

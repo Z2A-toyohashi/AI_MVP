@@ -169,24 +169,25 @@ export default function BoardPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-white">
-        <div className="w-8 h-8 border-2 border-gray-300 border-t-gray-900 rounded-full animate-spin"></div>
+      <div className="h-screen flex flex-col items-center justify-center bg-white gap-4">
+        <div className="text-5xl animate-bounce">📋</div>
+        <p className="text-gray-400 font-black text-sm tracking-widest uppercase">Loading...</p>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 flex flex-col pb-16">
-      <div className="w-full max-w-2xl mx-auto bg-white min-h-screen shadow-lg flex flex-col">
+    <div className="min-h-screen bg-white flex flex-col pb-16">
+      <div className="w-full max-w-lg mx-auto flex flex-col min-h-screen">
         {/* ヘッダー */}
-        <header className="bg-white shadow-sm flex-shrink-0 sticky top-0 z-10">
-          <div className="px-4 py-4">
-            <h1 className="text-xl font-bold text-gray-800 text-center">掲示板</h1>
+        <header className="bg-white border-b-2 border-gray-100 flex-shrink-0 sticky top-0 z-10">
+          <div className="px-4 py-4 flex items-center justify-center">
+            <h1 className="text-lg font-black text-gray-800">掲示板</h1>
           </div>
         </header>
 
         <main className="flex-1">
-          <div className="border-b-4 border-gray-200 shadow-sm bg-white">
+          <div className="border-b-2 border-gray-100 bg-white">
             <PostInput
               onPost={handlePost}
               replyTo={replyTo}
@@ -198,13 +199,10 @@ export default function BoardPage() {
 
           <div className="bg-white">
             {topLevelPosts.length === 0 ? (
-              <div className="py-20 text-center">
-                <div className="text-gray-300 mb-3">
-                  <svg className="w-16 h-16 mx-auto" fill="currentColor" viewBox="0 0 20 20">
-                    <path fillRule="evenodd" d="M18 10c0 3.866-3.582 7-8 7a8.841 8.841 0 01-4.083-.98L2 17l1.338-3.123C2.493 12.767 2 11.434 2 10c0-3.866 3.582-7 8-7s8 3.134 8 7zM7 9H5v2h2V9zm8 0h-2v2h2V9zM9 9h2v2H9V9z" clipRule="evenodd" />
-                  </svg>
-                </div>
-                <p className="text-gray-400">まだ投稿がありません</p>
+              <div className="py-20 text-center px-8">
+                <div className="text-6xl mb-4">📝</div>
+                <p className="font-black text-gray-700 text-lg mb-2">まだ投稿がありません</p>
+                <p className="text-gray-400 font-bold text-sm">最初の投稿をしてみよう！</p>
               </div>
             ) : (
               topLevelPosts.map((post) => (
@@ -217,9 +215,7 @@ export default function BoardPage() {
                   onReactionUpdate={fetchPosts}
                   onDelete={async (postId) => {
                     try {
-                      await fetch(`/api/posts?id=${postId}`, {
-                        method: 'DELETE',
-                      });
+                      await fetch(`/api/posts?id=${postId}`, { method: 'DELETE' });
                       await fetchPosts();
                     } catch (error) {
                       console.error('Failed to delete post:', error);
@@ -232,7 +228,6 @@ export default function BoardPage() {
         </main>
       </div>
 
-      {/* フッターナビゲーション */}
       <FooterNav />
     </div>
   );

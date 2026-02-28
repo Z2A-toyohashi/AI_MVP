@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { getUserId } from '@/lib/user';
+import Header from '@/components/Header';
 import FooterNav from '@/components/FooterNav';
 
 interface Event {
@@ -15,7 +16,12 @@ interface Event {
 interface Agent {
   id: string;
   name: string;
+  level: number;
+  experience: number;
+  appearance_stage: number;
+  personality: any;
   character_image_url?: string;
+  can_post_to_sns?: boolean;
 }
 
 export default function EventsPage() {
@@ -23,9 +29,7 @@ export default function EventsPage() {
   const [events, setEvents] = useState<Event[]>([]);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    init();
-  }, []);
+  useEffect(() => { init(); }, []);
 
   const init = async () => {
     try {
@@ -33,191 +37,104 @@ export default function EventsPage() {
       const agentRes = await fetch(`/api/agents?userId=${userId}`);
       const agentData = await agentRes.json();
       setAgent(agentData);
-
       if (agentData?.id) {
         const eventsRes = await fetch(`/api/events?agentId=${agentData.id}`);
         const eventsData = await eventsRes.json();
         setEvents(eventsData);
-        
-        // 全イベントを既読にする
-        await markAllAsRead(eventsData);
+        const unread = eventsData.filter((e: Event) => !e.is_read);
+        for (const ev of unread) {
+          await fetch('/api/events', {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ eventId: ev.id }),
+          });
+        }
       }
-    } catch (error) {
-      console.error('Failed to load events:', error);
+    } catch (e) {
+      console.error(e);
     } finally {
       setLoading(false);
     }
   };
 
-  const markAllAsRead = async (eventsList: Event[]) => {
-    try {
-      const unreadEvents = eventsList.filter(e => !e.is_read);
-      for (const event of unreadEvents) {
-        await fetch('/api/events', {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ eventId: event.id }),
-        });
-      }
-    } catch (error) {
-      console.error('Failed to mark events as read:', error);
-    }
-  };
+  const getEventIcon = (type: string) => ({ meet:'👋', talk:'💬', fight:'⚔️', explore:'🌐', learn:'📔' }[type] || '✨');
+  const getEventTitle = (type: string) => ({ meet:'出会い', talk:'会話', fight:'議論', explore:'掲示板での活動', learn:'今日の日記' }[type] || 'イベント');
 
-  const getEventIcon = (type: string) => {
-    const icons: Record<string, string> = {
-      meet: '👋',
-      talk: '💬',
-      fight: '⚔️',
-      explore: '🌐',
-      learn: '📔',
-    };
-    return icons[type] || '✨';
-  };
-
-  const getEventTitle = (type: string) => {
-    const titles: Record<string, string> = {
-      meet: '出会い',
-      talk: '会話',
-      fight: '議論',
-      explore: '掲示板での活動',
-      learn: '今日の日記',
-    };
-    return titles[type] || 'イベント';
-  };
-
-  const formatDate = (timestamp: number) => {
-    const date = new Date(timestamp);
-    const now = new Date();
-    const diff = now.getTime() - date.getTime();
-    const hours = Math.floor(diff / (1000 * 60 * 60));
-    
-    if (hours < 1) return 'たった今';
-    if (hours < 24) return `${hours}時間前`;
-    const days = Math.floor(hours / 24);
+  const formatDate = (ts: number) => {
+    const d = new Date(ts);
+    const diff = Date.now() - ts;
+    const h = Math.floor(diff / 3600000);
+    if (h < 1) return 'たった今';
+    if (h < 24) return `${h}時間前`;
+    const days = Math.floor(h / 24);
     if (days === 1) return '昨日';
-    if (days < 7) return `${days}日前`;
-    
-    // 日付表示
-    const month = date.getMonth() + 1;
-    const day = date.getDate();
-    return `${month}月${day}日`;
-  };
-
-  const formatFullDate = (timestamp: number) => {
-    const date = new Date(timestamp);
-    const year = date.getFullYear();
-    const month = date.getMonth() + 1;
-    const day = date.getDate();
-    const weekdays = ['日', '月', '火', '水', '木', '金', '土'];
-    const weekday = weekdays[date.getDay()];
-    return `${year}年${month}月${day}日（${weekday}）`;
+    return `${d.getMonth() + 1}月${d.getDate()}日`;
   };
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-purple-50 to-blue-50 flex items-center justify-center">
-        <div className="text-gray-600">読み込み中...</div>
+      <div className="h-screen flex flex-col items-center justify-center bg-white gap-4">
+        <div className="text-5xl animate-bounce">📔</div>
+        <p className="text-gray-400 font-black text-sm tracking-widest uppercase">Loading...</p>
       </div>
     );
   }
 
-  return (
-    <div className="min-h-screen bg-gradient-to-br from-purple-50 to-blue-50 pb-16">
-      <header className="bg-white shadow-sm">
-        <div className="max-w-4xl mx-auto px-4 py-4">
-          <h1 className="text-2xl font-bold text-gray-800 text-center">📔 {agent?.name}の日記</h1>
-        </div>
-      </header>
+  const stageEmoji = agent ? ['🥚','🐣','🐥','🐤','🦜'][Math.min(agent.appearance_stage - 1, 4)] : '🥚';
 
-      <main className="max-w-4xl mx-auto p-4 mt-6">
-        {/* キャラクター情報 */}
-        <div className="bg-white rounded-lg shadow-md p-6 mb-6">
-          <div className="flex items-center gap-4">
-            {agent?.character_image_url ? (
-              <div className="w-16 h-16 rounded-full overflow-hidden bg-gray-100 flex items-center justify-center flex-shrink-0">
-                <img 
-                  src={agent.character_image_url} 
-                  alt={agent.name}
-                  className="w-full h-full object-contain"
-                />
-              </div>
-            ) : (
-              <div className="w-16 h-16 rounded-full bg-purple-100 flex items-center justify-center text-2xl flex-shrink-0">
-                🐣
-              </div>
-            )}
-            <div>
-              <h2 className="text-xl font-bold text-gray-800">{agent?.name}の記録</h2>
-              <p className="text-sm text-gray-500">主人との日々、掲示板での出来事</p>
+  return (
+    <div className="min-h-screen bg-white pb-20">
+      <Header agent={agent || undefined} title="日記" />
+
+      <main className="max-w-lg mx-auto px-4 py-4">
+        {/* キャラカード */}
+        {agent && (
+          <div className="bg-[#fff9e6] border-2 border-[#ffd900] rounded-3xl p-4 mb-6 flex items-center gap-4">
+            <div className="w-16 h-16 rounded-2xl bg-white border-2 border-[#ffd900] flex items-center justify-center overflow-hidden flex-shrink-0">
+              {agent.character_image_url ? (
+                <img src={agent.character_image_url} alt={agent.name} className="w-full h-full object-contain" />
+              ) : <span className="text-3xl">{stageEmoji}</span>}
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="font-black text-gray-800 text-lg truncate">{agent.name}の日記</p>
+              <p className="text-sm font-bold text-gray-500">Lv.{agent.level} · {agent.experience} XP</p>
             </div>
           </div>
-        </div>
+        )}
 
-        {/* イベント一覧 */}
-        <div className="space-y-4">
-          {events.length === 0 ? (
-            <div className="bg-white rounded-lg shadow-md p-12 text-center">
-              <div className="text-gray-300 mb-4">
-                <div className="text-6xl mb-4">📖</div>
-              </div>
-              <p className="text-gray-400 text-lg mb-2">まだ日記がありません</p>
-              <p className="text-sm text-gray-500">
-                主人と会話したり、レベルが上がると<br />
-                日記が書かれるようになります
-              </p>
-            </div>
-          ) : (
-            events.map((event) => (
-              <div
-                key={event.id}
-                className={`bg-white rounded-lg shadow-md overflow-hidden transition-all hover:shadow-lg ${
-                  event.is_read ? '' : 'ring-2 ring-purple-300'
-                }`}
-              >
-                {/* ヘッダー */}
-                <div className="bg-gradient-to-r from-purple-50 to-blue-50 px-6 py-3 border-b border-gray-200">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-3">
-                      <span className="text-2xl">{getEventIcon(event.type)}</span>
-                      <div>
-                        <h3 className="font-semibold text-gray-800">{getEventTitle(event.type)}</h3>
-                        <p className="text-xs text-gray-500">{formatFullDate(event.created_at)}</p>
-                      </div>
-                    </div>
-                    <div className="text-right">
-                      <p className="text-xs text-gray-500">{formatDate(event.created_at)}</p>
+        {events.length === 0 ? (
+          <div className="text-center py-16">
+            <div className="text-6xl mb-4">📖</div>
+            <p className="font-black text-gray-700 text-lg mb-2">まだ日記がありません</p>
+            <p className="text-gray-400 font-bold text-sm">会話するとここに記録されるよ！</p>
+          </div>
+        ) : (
+          <div className="space-y-3">
+            {events.map((event) => (
+              <div key={event.id} className={`rounded-3xl border-2 overflow-hidden ${!event.is_read ? 'border-[#58cc02] bg-[#f0fce4]' : 'border-gray-100 bg-white'}`}>
+                <div className="px-4 py-3 flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-2xl bg-white border-2 border-gray-100 flex items-center justify-center text-xl flex-shrink-0">
+                    {getEventIcon(event.type)}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2">
+                      <span className="font-black text-gray-800 text-sm">{getEventTitle(event.type)}</span>
                       {!event.is_read && (
-                        <span className="inline-block mt-1 px-2 py-0.5 bg-purple-500 text-white text-xs rounded-full">
-                          NEW
-                        </span>
+                        <span className="text-[10px] font-black text-white bg-[#58cc02] px-2 py-0.5 rounded-full">NEW</span>
                       )}
                     </div>
+                    <span className="text-xs font-bold text-gray-400">{formatDate(event.created_at)}</span>
                   </div>
                 </div>
-
-                {/* コンテンツ */}
-                <div className="px-6 py-5">
-                  <p className="text-gray-800 leading-relaxed whitespace-pre-wrap">
-                    {event.content}
-                  </p>
+                <div className="px-4 pb-4">
+                  <p className="text-sm font-semibold text-gray-700 leading-relaxed whitespace-pre-wrap">{event.content}</p>
                 </div>
-
-                {/* フッター（日記タイプの場合） */}
-                {event.type === 'learn' && (
-                  <div className="px-6 py-3 bg-gray-50 border-t border-gray-200">
-                    <p className="text-xs text-gray-500 text-center">
-                      ✨ この日の思い出
-                    </p>
-                  </div>
-                )}
               </div>
-            ))
-          )}
-        </div>
+            ))}
+          </div>
+        )}
       </main>
 
-      {/* フッターナビゲーション */}
       <FooterNav />
     </div>
   );

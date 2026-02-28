@@ -51,21 +51,24 @@ async function getGlobalSystemPrompt(): Promise<string> {
 - 主人の第二の自分として、主人の考え方を理解し共感する`;
 }
 
-// エージェントとの会話でAI応答を生成
-export async function generateAIResponse(agent: any, userMessage: string): Promise<string> {
+// エージェントとの会話でAI応答を生成（会話履歴付き）
+export async function generateAIResponse(agent: any, userMessage: string, history: {role: string, content: string}[] = []): Promise<string> {
   const personality = agent.personality || { positive: 0, talkative: 0, curious: 0 };
-  
-  // グローバルプロンプトを取得
   const globalPrompt = await getGlobalSystemPrompt();
-  
-  // 性格パラメータを追加
   const systemPrompt = buildSystemPrompt(globalPrompt, personality, agent.level, agent.name);
 
   try {
+    // 直近10件の履歴をOpenAI形式に変換
+    const historyMessages = history.slice(-10).map((m) => ({
+      role: (m.role === 'ai' ? 'assistant' : m.role) as 'user' | 'assistant',
+      content: m.content,
+    }));
+
     const completion = await openai.chat.completions.create({
       model: 'gpt-4o-mini',
       messages: [
         { role: 'system', content: systemPrompt },
+        ...historyMessages,
         { role: 'user', content: userMessage },
       ],
       temperature: 1.0,

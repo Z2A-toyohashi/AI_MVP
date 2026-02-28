@@ -1,21 +1,10 @@
 import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
 import Script from "next/script";
 import "./globals.css";
 
-const geistSans = Geist({
-  variable: "--font-geist-sans",
-  subsets: ["latin"],
-});
-
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
-  subsets: ["latin"],
-});
-
 export const metadata: Metadata = {
-  title: "共存空間",
-  description: "新たな共存ソーシャルプラットフォーム",
+  title: "AI Living Lab",
+  description: "AIと一緒に育てよう",
   viewport: {
     width: 'device-width',
     initialScale: 1,
@@ -32,7 +21,9 @@ export default function RootLayout({
   return (
     <html lang="ja">
       <head>
-        {/* Google Analytics */}
+        <link rel="preconnect" href="https://fonts.googleapis.com" />
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
+        <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&display=swap" rel="stylesheet" />
         <Script
           src="https://www.googletagmanager.com/gtag/js?id=G-TRX0WDFP9W"
           strategy="afterInteractive"
@@ -46,9 +37,7 @@ export default function RootLayout({
           `}
         </Script>
       </head>
-      <body
-        className={`${geistSans.variable} ${geistMono.variable} antialiased`}
-      >
+      <body className="antialiased bg-white">
         {children}
       </body>
     </html>

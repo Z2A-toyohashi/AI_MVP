@@ -3,33 +3,29 @@
 import { useEffect, useState } from 'react';
 import { getUserId } from '@/lib/user';
 import AgentChat from '@/components/AgentChat';
-import AgentStatus from '@/components/AgentStatus';
 import FooterNav from '@/components/FooterNav';
+import Header from '@/components/Header';
 
 interface Agent {
   id: string;
   user_id: string;
   name: string;
-  personality: {
-    positive: number;
-    talkative: number;
-    curious: number;
-  };
+  personality: { positive: number; talkative: number; curious: number; creative?: number };
   level: number;
   experience: number;
   appearance_stage: number;
   last_active_at: number;
   is_outside: boolean;
   created_at: number;
+  character_image_url?: string;
+  can_post_to_sns?: boolean;
 }
 
 export default function HomePage() {
   const [agent, setAgent] = useState<Agent | null>(null);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    initAgent();
-  }, []);
+  useEffect(() => { initAgent(); }, []);
 
   const initAgent = async () => {
     try {
@@ -37,8 +33,8 @@ export default function HomePage() {
       const res = await fetch(`/api/agents?userId=${userId}`);
       const data = await res.json();
       setAgent(data);
-    } catch (error) {
-      console.error('Failed to init agent:', error);
+    } catch (e) {
+      console.error(e);
     } finally {
       setLoading(false);
     }
@@ -46,47 +42,70 @@ export default function HomePage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-purple-50 to-blue-50 flex items-center justify-center">
-        <div className="text-gray-600">読み込み中...</div>
+      <div className="h-screen flex flex-col items-center justify-center bg-white gap-4">
+        <div className="text-6xl animate-bounce">🥚</div>
+        <p className="text-gray-400 font-bold text-sm tracking-widest uppercase">Loading...</p>
       </div>
     );
   }
 
   if (!agent) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-purple-50 to-blue-50 flex items-center justify-center">
-        <div className="text-red-600">エージェントの作成に失敗しました</div>
+      <div className="h-screen flex flex-col items-center justify-center bg-white gap-6 p-8">
+        <div className="text-6xl">😢</div>
+        <p className="text-gray-700 font-bold text-lg text-center">エージェントの作成に失敗しました</p>
+        <button onClick={() => window.location.reload()} className="btn-duo btn-duo-green">
+          もう一度試す
+        </button>
       </div>
     );
   }
 
-  return (
-    <div className="h-screen bg-gradient-to-br from-purple-50 to-blue-50 flex flex-col">
-      {/* ヘッダー（固定） */}
-      <header className="bg-white shadow-sm flex-shrink-0">
-        <div className="max-w-7xl mx-auto px-4 py-4">
-          <h1 className="text-xl md:text-2xl font-bold text-gray-800 text-center">キャラと共に</h1>
-        </div>
-      </header>
+  const expNeeded = agent.level * 30;
+  const expPct = Math.min((agent.experience / expNeeded) * 100, 100);
+  const stageEmoji = ['🥚','🐣','🐥','🐤','🦜'][Math.min(agent.appearance_stage - 1, 4)];
 
-      {/* メインコンテンツ（スクロール可能） - フッター(64px) + 入力欄(72px) = 136px分の余白 */}
-      <main className="flex-1 overflow-y-auto pb-36">
-        <div className="max-w-7xl mx-auto p-2 md:p-4">
-          <div className="flex flex-col md:flex-row gap-4 md:gap-6">
-            {/* キャラクターステータス */}
-            <div className="w-full md:w-80 flex-shrink-0">
-              <AgentStatus agent={agent} onUpdate={initAgent} />
+  const getNextMilestone = (level: number) => {
+    if (level < 3) return { level: 3, label: '見た目が変わる' };
+    if (level < 5) return { level: 5, label: '掲示板解放' };
+    if (level < 7) return { level: 7, label: 'さらに進化' };
+    if (level < 9) return { level: 9, label: '最終形態' };
+    return null;
+  };
+  const nextMilestone = getNextMilestone(agent.level);
+
+  return (
+    <div className="h-screen flex flex-col bg-white overflow-hidden">
+      <Header agent={agent} />
+
+      {/* XPバー + キャラ情報（アイコンなし・コンパクト） */}
+      <div className="flex-shrink-0 px-4 py-2 border-b border-gray-100">
+        <div className="flex items-center gap-3 max-w-lg mx-auto">
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center justify-between mb-1">
+              <span className="font-black text-gray-800 text-sm truncate">{agent.name}</span>
+              <span className="text-xs font-bold text-[#ff9600] ml-2 flex-shrink-0">Lv.{agent.level}</span>
             </div>
-            
-            {/* チャット */}
-            <div className="flex-1 min-w-0">
-              <AgentChat agent={agent} />
+            <div className="xp-bar">
+              <div className="xp-fill" style={{ width: `${expPct}%` }} />
+            </div>
+            <div className="flex justify-between mt-0.5">
+              <span className="text-[10px] text-gray-400 font-bold">
+                {nextMilestone ? `Lv.${nextMilestone.level}で${nextMilestone.label}` : '最大レベル到達！'}
+              </span>
+              <span className="text-[10px] text-gray-400 font-bold">{agent.experience}/{expNeeded} XP</span>
             </div>
           </div>
         </div>
+      </div>
+
+      {/* チャットエリア */}
+      <main className="flex-1 overflow-hidden" style={{ paddingBottom: '64px' }}>
+        <div className="h-full max-w-lg mx-auto">
+          <AgentChat agent={agent} onLevelUp={initAgent} />
+        </div>
       </main>
 
-      {/* フッターナビゲーション */}
       <FooterNav />
     </div>
   );

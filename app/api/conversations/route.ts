@@ -15,7 +15,7 @@ export async function GET(request: NextRequest) {
       .from('conversations')
       .select('*')
       .eq('agent_id', agentId)
-      .order('created_at', { ascending: false })
+      .order('created_at', { ascending: true })
       .limit(50);
 
     if (error) throw error;
@@ -59,8 +59,18 @@ export async function POST(request: NextRequest) {
 
     if (agentError) throw agentError;
 
-    // AI応答生成
-    const aiResponse = await generateAIResponse(agent, content);
+    // 会話履歴を取得（直近20件、古い順）
+    const { data: history } = await supabase
+      .from('conversations')
+      .select('role, content')
+      .eq('agent_id', agentId)
+      .order('created_at', { ascending: false })
+      .limit(20);
+
+    const orderedHistory = (history || []).reverse();
+
+    // AI応答生成（履歴付き）
+    const aiResponse = await generateAIResponse(agent, content, orderedHistory);
 
     // AI応答を保存
     const { error: aiError } = await supabase

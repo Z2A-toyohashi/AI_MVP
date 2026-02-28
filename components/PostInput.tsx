@@ -197,52 +197,26 @@ export default function PostInput({
   };
 
   return (
-    <div className="p-5 bg-gray-50/50 border-b-4 border-gray-100">
+    <div className="p-4 bg-white">
       {replyTo && replyToPost && (
-        <div className="mb-3 bg-blue-50 border-2 border-blue-200 rounded-lg p-3">
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-xs font-semibold text-blue-700">💬 返信先</span>
+        <div className="mb-3 bg-[#f0fce4] border-2 border-[#58cc02] rounded-2xl p-3">
+          <div className="flex items-center justify-between mb-1">
+            <span className="text-xs font-black text-[#58cc02]">返信先</span>
             {onCancel && (
-              <button
-                onClick={onCancel}
-                className="text-blue-400 hover:text-blue-600 transition-colors font-bold text-lg leading-none"
-              >
-                ✕
-              </button>
+              <button onClick={onCancel} className="text-gray-400 hover:text-gray-600 font-black text-lg leading-none">✕</button>
             )}
           </div>
-          <div className="flex gap-2 items-start">
-            <div
-              className="w-6 h-6 rounded-full flex items-center justify-center text-white text-xs font-bold flex-shrink-0"
-              style={{ backgroundColor: getUserColor(replyToPost.author_id) }}
-            >
-              {replyToPost.author_id.slice(-2)}
-            </div>
-            <div className="flex-1 min-w-0">
-              <p className="text-xs font-semibold text-gray-700">{replyToPost.author_id}</p>
-              <p className="text-xs text-gray-600 line-clamp-2 mt-1">{replyToPost.content}</p>
-            </div>
-          </div>
+          <p className="text-xs font-bold text-gray-600 line-clamp-2">{replyToPost.content}</p>
         </div>
       )}
 
       {imagePreview && (
-        <div className="mb-4 relative inline-block">
-          <img
-            src={imagePreview}
-            alt="プレビュー"
-            className="max-h-64 rounded-xl border-2 border-blue-200 shadow-md"
-          />
+        <div className="mb-3 relative inline-block">
+          <img src={imagePreview} alt="プレビュー" className="max-h-48 rounded-2xl border-2 border-[#84d8ff]" />
           <button
-            onClick={() => {
-              setImagePreview(null);
-              setImageFile(null);
-              if (fileInputRef.current) fileInputRef.current.value = '';
-            }}
-            className="absolute top-2 right-2 bg-black bg-opacity-70 text-white rounded-full w-8 h-8 flex items-center justify-center hover:bg-opacity-90 transition-all shadow-lg"
-          >
-            ✕
-          </button>
+            onClick={() => { setImagePreview(null); setImageFile(null); if (fileInputRef.current) fileInputRef.current.value = ''; }}
+            className="absolute top-2 right-2 bg-black/60 text-white rounded-full w-7 h-7 flex items-center justify-center text-sm font-black"
+          >✕</button>
         </div>
       )}
 
@@ -251,12 +225,12 @@ export default function PostInput({
         onChange={(e) => setContent(e.target.value)}
         onKeyDown={handleKeyDown}
         placeholder={placeholder}
-        className="w-full resize-none border-0 focus:outline-none text-gray-900 placeholder-gray-400 mb-4 bg-transparent"
+        className="w-full resize-none border-0 focus:outline-none text-gray-800 placeholder-gray-400 font-semibold bg-transparent mb-3"
         style={{ fontSize: '16px' }}
         rows={3}
       />
 
-      <div className="flex items-center justify-between pt-3 border-t border-gray-200">
+      <div className="flex items-center justify-between">
         <div className="flex gap-2">
           <button
             onMouseDown={startRecording}
@@ -264,10 +238,10 @@ export default function PostInput({
             onMouseLeave={stopRecording}
             onTouchStart={startRecording}
             onTouchEnd={stopRecording}
-            className={`w-11 h-11 rounded-full flex items-center justify-center transition-all shadow-md ${
+            className={`w-11 h-11 rounded-2xl flex items-center justify-center transition-all font-black ${
               isRecording
-                ? 'bg-indigo-600 text-white shadow-lg scale-110 ring-4 ring-indigo-200'
-                : 'bg-blue-100 text-blue-600 hover:bg-blue-200 hover:shadow-lg'
+                ? 'bg-[#ff4b4b] text-white shadow-[0_4px_0_#cc0000]'
+                : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
             }`}
             title="長押しで録音"
           >
@@ -278,34 +252,35 @@ export default function PostInput({
 
           <button
             onClick={() => fileInputRef.current?.click()}
-            className="w-11 h-11 rounded-full bg-indigo-100 text-indigo-600 hover:bg-indigo-200 flex items-center justify-center transition-all shadow-md hover:shadow-lg"
+            className="w-11 h-11 rounded-2xl bg-gray-100 text-gray-500 hover:bg-gray-200 flex items-center justify-center transition-all"
             title="画像を選択"
           >
             <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
               <path fillRule="evenodd" d="M4 3a2 2 0 00-2 2v10a2 2 0 002 2h12a2 2 0 002-2V5a2 2 0 00-2-2H4zm12 12H4l4-8 3 6 2-4 3 6z" clipRule="evenodd" />
             </svg>
           </button>
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept="image/*,image/heic,image/heif"
-            onChange={handleImageSelect}
-            className="hidden"
-          />
+          <input ref={fileInputRef} type="file" accept="image/*,image/heic,image/heif" onChange={handleImageSelect} className="hidden" />
         </div>
 
         <button
           onClick={handleSubmit}
           disabled={(!content.trim() && !imageFile) || isUploading}
-          className="px-10 py-3 bg-blue-600 text-white rounded-full hover:bg-indigo-600 disabled:bg-gray-300 disabled:cursor-not-allowed transition-all text-base font-semibold shadow-lg hover:shadow-xl transform hover:scale-105 disabled:transform-none disabled:shadow-md"
+          className="btn-duo px-8 py-3 text-sm"
+          style={{
+            background: (content.trim() || imageFile) && !isUploading ? '#58cc02' : '#e5e5e5',
+            color: (content.trim() || imageFile) && !isUploading ? '#fff' : '#afafaf',
+            boxShadow: (content.trim() || imageFile) && !isUploading ? '0 4px 0 #46a302' : '0 4px 0 #c4c4c4',
+            borderRadius: '16px',
+            fontWeight: 800,
+            fontSize: '14px',
+            letterSpacing: '0.5px',
+            textTransform: 'uppercase',
+            cursor: (content.trim() || imageFile) && !isUploading ? 'pointer' : 'not-allowed',
+          }}
         >
           {isUploading ? '送信中...' : '投稿'}
         </button>
       </div>
-
-      <p className="text-xs text-gray-400 mt-3">
-        Cmd/Ctrl + Enter で投稿
-      </p>
     </div>
   );
 }

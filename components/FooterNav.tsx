@@ -10,8 +10,6 @@ export default function FooterNav() {
 
   useEffect(() => {
     loadUnreadCount();
-    
-    // 30秒ごとに未読数をチェック
     const interval = setInterval(loadUnreadCount, 30000);
     return () => clearInterval(interval);
   }, []);
@@ -21,64 +19,73 @@ export default function FooterNav() {
       const userId = getUserId();
       const agentRes = await fetch(`/api/agents?userId=${userId}`);
       const agent = await agentRes.json();
-      
       if (agent?.id) {
         const eventsRes = await fetch(`/api/events?agentId=${agent.id}&countOnly=true`);
         const data = await eventsRes.json();
         setUnreadCount(data.unreadCount || 0);
       }
-    } catch (error) {
-      console.error('Failed to load unread count:', error);
+    } catch (e) {
+      console.error(e);
     }
   };
 
+  const items = [
+    {
+      href: '/',
+      label: 'ホーム',
+      icon: (active: boolean) => (
+        <svg className="w-6 h-6" fill={active ? '#58cc02' : 'none'} stroke={active ? '#58cc02' : '#afafaf'} strokeWidth={2.5} viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+        </svg>
+      ),
+    },
+    {
+      href: '/board',
+      label: '掲示板',
+      icon: (active: boolean) => (
+        <svg className="w-6 h-6" fill={active ? '#58cc02' : 'none'} stroke={active ? '#58cc02' : '#afafaf'} strokeWidth={2.5} viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+        </svg>
+      ),
+    },
+    {
+      href: '/events',
+      label: '日記',
+      badge: unreadCount,
+      icon: (active: boolean) => (
+        <svg className="w-6 h-6" fill={active ? '#58cc02' : 'none'} stroke={active ? '#58cc02' : '#afafaf'} strokeWidth={2.5} viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
+        </svg>
+      ),
+    },
+  ];
+
   return (
-    <nav className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 shadow-lg z-50">
-      <div className="max-w-2xl mx-auto flex justify-around items-center h-16">
-        <a 
-          href="/" 
-          className={`flex flex-col items-center justify-center flex-1 transition-colors ${
-            pathname === '/' ? 'text-purple-600' : 'text-gray-600 hover:text-purple-600'
-          }`}
-        >
-          <svg className="w-6 h-6 mb-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" />
-          </svg>
-          <span className="text-xs">チャット</span>
-        </a>
-        
-        <a 
-          href="/board" 
-          className={`flex flex-col items-center justify-center flex-1 transition-colors ${
-            pathname === '/board' ? 'text-purple-600' : 'text-gray-600 hover:text-purple-600'
-          }`}
-        >
-          <svg className="w-6 h-6 mb-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 20H5a2 2 0 01-2-2V6a2 2 0 012-2h10a2 2 0 012 2v1m2 13a2 2 0 01-2-2V7m2 13a2 2 0 002-2V9a2 2 0 00-2-2h-2m-4-3H9M7 16h6M7 8h6v4H7V8z" />
-          </svg>
-          <span className="text-xs">掲示板</span>
-        </a>
-        
-        <a 
-          href="/events" 
-          className={`flex flex-col items-center justify-center flex-1 transition-colors relative ${
-            pathname === '/events' ? 'text-purple-600' : 'text-gray-600 hover:text-purple-600'
-          }`}
-        >
-          <div className="relative">
-            <svg className="w-6 h-6 mb-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
-            </svg>
-            {unreadCount > 0 && (
-              <span className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 rounded-full flex items-center justify-center">
-                <span className="text-white text-[10px] font-bold">
-                  {unreadCount > 9 ? '9+' : unreadCount}
-                </span>
+    <nav className="fixed bottom-0 left-0 right-0 bg-white border-t-2 border-gray-100 z-50">
+      <div className="max-w-lg mx-auto flex">
+        {items.map((item) => {
+          const active = pathname === item.href;
+          return (
+            <a
+              key={item.href}
+              href={item.href}
+              className="flex-1 flex flex-col items-center justify-center py-3 gap-1 relative transition-colors"
+            >
+              <div className="relative">
+                {item.icon(active)}
+                {item.badge != null && item.badge > 0 && (
+                  <span className="absolute -top-1.5 -right-1.5 w-5 h-5 bg-[#ff4b4b] rounded-full flex items-center justify-center">
+                    <span className="text-white text-[10px] font-black">{item.badge > 9 ? '9+' : item.badge}</span>
+                  </span>
+                )}
+              </div>
+              <span className={`text-[11px] font-black ${active ? 'text-[#58cc02]' : 'text-[#afafaf]'}`}>
+                {item.label}
               </span>
-            )}
-          </div>
-          <span className="text-xs">日記</span>
-        </a>
+              {active && <div className="absolute top-0 left-1/2 -translate-x-1/2 w-8 h-0.5 bg-[#58cc02] rounded-full" />}
+            </a>
+          );
+        })}
       </div>
     </nav>
   );
