@@ -18,15 +18,18 @@ export async function GET(request: NextRequest) {
     }
 
     const supabase = getServerSupabase();
+    // 最新100件を降順で取得してから昇順に並び替え（最新が一番下に来るように）
     const { data, error } = await supabase
       .from('conversations')
       .select('*')
       .eq('agent_id', agentId)
-      .order('created_at', { ascending: true })
-      .limit(50);
+      .order('created_at', { ascending: false })
+      .limit(100);
 
     if (error) throw error;
-    return NextResponse.json(data || []);
+    // 古い順に並び替えて返す
+    const sorted = (data || []).reverse();
+    return NextResponse.json(sorted);
   } catch (error) {
     console.error('Error in GET /api/conversations:', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
