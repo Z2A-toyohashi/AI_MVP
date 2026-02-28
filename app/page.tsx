@@ -38,7 +38,9 @@ export default function HomePage() {
       });
       const res = await fetch(`/api/agents?userId=${userId}`);
       const data = await res.json();
-      setAgent(data);
+      if (data && data.id) {
+        setAgent(data); // idがある場合のみ更新（エラーレスポンスで上書きしない）
+      }
     } catch (e) {
       console.error(e);
     } finally {
