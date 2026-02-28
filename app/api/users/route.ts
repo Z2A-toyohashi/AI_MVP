@@ -6,7 +6,7 @@ export async function GET(request: NextRequest) {
     // 特定ユーザーの情報取得
     const userId = request.nextUrl.searchParams.get('userId');
     if (userId) {
-      const { data } = await supabase.from('users').select('id, display_name').eq('id', userId).single();
+      const { data } = await supabase.from('users').select('id, display_name, avatar_url').eq('id', userId).single();
       return NextResponse.json(data || {});
     }
 
@@ -81,15 +81,20 @@ export async function POST(request: NextRequest) {
 // display_name更新
 export async function PATCH(request: NextRequest) {
   try {
-    const { userId, displayName } = await request.json();
-    if (!userId || !displayName?.trim()) {
-      return NextResponse.json({ error: 'userId and displayName required' }, { status: 400 });
+    const { userId, displayName, avatarUrl } = await request.json();
+    if (!userId) {
+      return NextResponse.json({ error: 'userId required' }, { status: 400 });
     }
-    const name = displayName.trim().slice(0, 20);
-    await supabase.from('users').update({ display_name: name }).eq('id', userId);
-    return NextResponse.json({ success: true, displayName: name });
+    const updates: Record<string, string> = {};
+    if (displayName !== undefined) updates.display_name = displayName.trim().slice(0, 20);
+    if (avatarUrl !== undefined) updates.avatar_url = avatarUrl;
+    if (Object.keys(updates).length === 0) {
+      return NextResponse.json({ error: 'nothing to update' }, { status: 400 });
+    }
+    await supabase.from('users').update(updates).eq('id', userId);
+    return NextResponse.json({ success: true, ...updates });
   } catch (error) {
-    console.error('Failed to update display name:', error);
+    console.error('Failed to update user:', error);
     return NextResponse.json({ error: 'Failed to update' }, { status: 500 });
   }
 }

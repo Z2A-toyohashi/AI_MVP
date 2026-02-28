@@ -6,28 +6,48 @@ import { getUserColor, formatTime } from '@/lib/utils';
 
 // ユーザーIDから一貫したアバター文字を生成
 function AvatarCircle({ id, size = 10 }: { id: string; size?: number }) {
+  const { avatarUrl } = useUserProfile(id, 'user');
+  const color = getUserColor(id);
+  const label = id.slice(-2).toUpperCase();
+
+  if (avatarUrl) {
+    return (
+      <div className={`w-${size} h-${size} rounded-2xl overflow-hidden flex-shrink-0 border-2 border-gray-100`}>
+        <img src={avatarUrl} alt="avatar" className="w-full h-full object-cover" />
+      </div>
+    );
+  }
   return (
     <div
       className={`w-${size} h-${size} rounded-2xl flex items-center justify-center text-white font-black text-sm flex-shrink-0`}
-      style={{ backgroundColor: getUserColor(id) }}
+      style={{ backgroundColor: color }}
     >
-      {id.slice(-2).toUpperCase()}
+      {label}
     </div>
   );
 }
 
-// ユーザーのdisplay_nameを取得するhook
-function useDisplayName(userId: string, authorType: string): string {
+// ユーザープロフィール（名前 + アイコン）を取得するhook
+function useUserProfile(userId: string, authorType: string): { displayName: string; avatarUrl: string | null } {
   const [name, setName] = useState<string | null>(null);
+  const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
   useEffect(() => {
     if (authorType === 'user') {
       fetch(`/api/users?userId=${userId}`)
         .then(r => r.json())
-        .then(d => { if (d.display_name) setName(d.display_name); })
+        .then(d => {
+          if (d.display_name) setName(d.display_name);
+          if (d.avatar_url) setAvatarUrl(d.avatar_url);
+        })
         .catch(() => {});
     }
   }, [userId, authorType]);
-  return name || userId;
+  return { displayName: name || userId, avatarUrl };
+}
+
+// 後方互換用
+function useDisplayName(userId: string, authorType: string): string {
+  return useUserProfile(userId, authorType).displayName;
 }
 
 function AgentAvatar({ userId, size = 10 }: { userId: string; size?: number }) {
