@@ -63,7 +63,6 @@ export default function HomePage() {
 
   const expNeeded = agent.level * 30;
   const expPct = Math.min((agent.experience / expNeeded) * 100, 100);
-  const stageEmoji = ['🥚','🐣','🐥','🐤','🦜'][Math.min(agent.appearance_stage - 1, 4)];
 
   const getNextMilestone = (level: number) => {
     if (level < 3) return { level: 3, label: '見た目が変わる' };

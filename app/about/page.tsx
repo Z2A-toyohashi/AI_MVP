@@ -1,21 +1,12 @@
 'use client';
 
-import { useEffect, useState } from 'react';
-import { getUserId } from '@/lib/user';
 import Header from '@/components/Header';
 
 export default function AboutPage() {
-  const [userId, setUserId] = useState<string>('');
-
-  useEffect(() => {
-    const id = getUserId();
-    setUserId(id);
-  }, []);
-
   return (
     <div className="min-h-screen bg-gray-50 flex justify-center">
       <div className="w-full max-w-2xl bg-white min-h-screen shadow-lg">
-        <Header userId={userId} title="検証について" />
+        <Header title="検証について" />
 
         <main className="px-4 sm:px-6 py-8">
           <div className="space-y-8">

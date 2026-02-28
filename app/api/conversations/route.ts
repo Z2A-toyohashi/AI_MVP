@@ -123,7 +123,6 @@ async function updateAgentProgress(supabase: any, agentId: string, agent: any, c
   const expNeeded = level * 30; // レベル1: 30, レベル2: 60, レベル3: 90...
   
   if (experience >= expNeeded) {
-    const oldLevel = level;
     level += 1;
     experience = experience - expNeeded;
     levelUp = true;
@@ -236,7 +235,7 @@ async function getConversationCount(supabase: any, agentId: string): Promise<num
 }
 
 // 会話からナレッジを抽出
-async function extractKnowledge(supabase: any, agentId: string, userMessage: string) {
+async function extractKnowledge(supabase: any, agentId: string, _userMessage: string) {
   try {
     // 最近の会話を取得
     const { data: recentConversations } = await supabase
@@ -348,7 +347,7 @@ async function generateCharacterImage(supabase: any, agentId: string, personalit
 
     // Supabase Storageにアップロード
     const fileName = `agent-${agentId}-stage${stage}-${Date.now()}.png`;
-    const { data: uploadData, error: uploadError } = await supabase.storage
+    const { error: uploadError } = await supabase.storage
       .from('uploads')
       .upload(fileName, buffer, {
         contentType: 'image/png',

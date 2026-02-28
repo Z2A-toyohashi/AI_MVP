@@ -271,7 +271,7 @@ export default function ChatPage() {
   return (
     <div className="min-h-screen bg-gray-50 flex justify-center">
       <div className="w-full max-w-2xl bg-white min-h-screen shadow-lg flex flex-col">
-        <Header userId={userId} title="AIと1on1" />
+        <Header title="AIと1on1" />
 
         <main className="flex-1 flex flex-col overflow-hidden">
           {/* メッセージエリア */}

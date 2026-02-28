@@ -18,7 +18,7 @@ export default function SettingsPage() {
   return (
     <div className="min-h-screen bg-gray-50 flex justify-center">
       <div className="w-full max-w-2xl bg-white min-h-screen shadow-lg">
-        <Header userId={userId} title="設定" />
+        <Header title="設定" />
 
         <main className="px-4 sm:px-6 py-8">
           <div className="space-y-8">
