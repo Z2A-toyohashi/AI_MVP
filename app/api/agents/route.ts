@@ -23,6 +23,22 @@ export async function GET(request: NextRequest) {
     // エージェントが存在しない場合は作成
     if (!agent) {
       const now = Date.now();
+
+      // usersテーブルにユーザーが存在しない場合は先に作成（外部キー制約対策）
+      const { data: existingUser } = await supabase
+        .from('users')
+        .select('id')
+        .eq('id', userId)
+        .single();
+
+      if (!existingUser) {
+        await supabase.from('users').insert([{
+          id: userId,
+          created_at: now,
+          last_seen: now,
+        }]);
+      }
+
       const { data: newAgent, error: createError } = await supabase
         .from('agents')
         .insert({

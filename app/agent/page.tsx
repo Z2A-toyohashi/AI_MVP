@@ -33,6 +33,12 @@ export default function AgentPage() {
   const initAgent = async () => {
     try {
       const userId = getUserId();
+      // usersテーブルへの登録を確実に行う（外部キー制約対策）
+      await fetch('/api/users', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId }),
+      });
       const res = await fetch(`/api/agents?userId=${userId}`);
       const data = await res.json();
       setAgent(data);

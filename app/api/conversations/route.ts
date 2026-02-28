@@ -51,7 +51,10 @@ export async function POST(request: NextRequest) {
       .eq('id', agentId)
       .single();
 
-    if (agentError) throw agentError;
+    if (agentError) {
+      console.error('Agent fetch error:', agentError);
+      return NextResponse.json({ error: 'Agent not found', details: agentError.message, code: agentError.code }, { status: 404 });
+    }
 
     // グリーティングモード: ユーザーメッセージは保存せず、AIから話しかける
     if (isGreeting) {

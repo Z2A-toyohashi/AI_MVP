@@ -83,6 +83,10 @@ export default function AgentChat({ agent, onLevelUp }: Props) {
     setInput('');
     if (textareaRef.current) textareaRef.current.style.height = 'auto';
 
+    // 楽観的にユーザーメッセージを表示
+    const tempId = `temp-${Date.now()}`;
+    setMessages(prev => [...prev, { id: tempId, role: 'user', content: msg, created_at: Date.now() }]);
+
     try {
       const res = await fetch('/api/conversations', {
         method: 'POST',
@@ -91,16 +95,28 @@ export default function AgentChat({ agent, onLevelUp }: Props) {
       });
       if (res.ok) {
         const data = await res.json();
-        await fetchMessages();
+        await fetchMessages(); // 正確なデータで上書き
         if (data.levelUp) {
           const evolved = [3, 5, 7, 9].includes(data.newLevel);
           setLevelUpNotification({ level: data.newLevel, evolved });
           setTimeout(() => setLevelUpNotification(null), evolved ? 4000 : 3000);
           setTimeout(() => { onLevelUp?.(); }, evolved ? 4200 : 3200);
         }
+      } else {
+        const errData = await res.json().catch(() => ({}));
+        console.error('Send failed:', res.status, errData);
+        setMessages(prev => prev.filter(m => m.id !== tempId));
+        setInput(msg);
+        // エージェントIDの不整合（古いキャッシュ）の場合はリロード
+        if (res.status === 404) {
+          alert('データの不整合が検出されました。ページを再読み込みします。');
+          window.location.reload();
+        }
       }
     } catch (e) {
       console.error(e);
+      setMessages(prev => prev.filter(m => m.id !== tempId));
+      setInput(msg);
     } finally {
       setSending(false);
     }
