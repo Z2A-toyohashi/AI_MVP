@@ -58,8 +58,16 @@ export default function FooterNav() {
         </svg>
       ),
     },
+    {
+      href: '/settings',
+      label: '設定',
+      icon: (active: boolean) => (
+        <svg className="w-6 h-6" fill={active ? '#58cc02' : 'none'} stroke={active ? '#58cc02' : '#afafaf'} strokeWidth={2.5} viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+        </svg>
+      ),
+    },
   ];
-
   return (
     <nav className="fixed bottom-0 left-0 right-0 bg-white border-t-2 border-gray-100 z-50">
       <div className="max-w-lg mx-auto flex">
