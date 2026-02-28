@@ -1,8 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase-client';
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
+    // 特定ユーザーの情報取得
+    const userId = request.nextUrl.searchParams.get('userId');
+    if (userId) {
+      const { data } = await supabase.from('users').select('id, display_name').eq('id', userId).single();
+      return NextResponse.json(data || {});
+    }
+
     // アクティブな人間ユーザー数（1時間以内）
     const { data: activeUsers, error: activeError } = await supabase
       .from('users')
@@ -68,5 +75,21 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     console.error('Failed to register user:', error);
     return NextResponse.json({ error: 'Failed to register user' }, { status: 500 });
+  }
+}
+
+// display_name更新
+export async function PATCH(request: NextRequest) {
+  try {
+    const { userId, displayName } = await request.json();
+    if (!userId || !displayName?.trim()) {
+      return NextResponse.json({ error: 'userId and displayName required' }, { status: 400 });
+    }
+    const name = displayName.trim().slice(0, 20);
+    await supabase.from('users').update({ display_name: name }).eq('id', userId);
+    return NextResponse.json({ success: true, displayName: name });
+  } catch (error) {
+    console.error('Failed to update display name:', error);
+    return NextResponse.json({ error: 'Failed to update' }, { status: 500 });
   }
 }

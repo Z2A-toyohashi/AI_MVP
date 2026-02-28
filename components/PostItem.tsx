@@ -16,6 +16,20 @@ function AvatarCircle({ id, size = 10 }: { id: string; size?: number }) {
   );
 }
 
+// ユーザーのdisplay_nameを取得するhook
+function useDisplayName(userId: string, authorType: string): string {
+  const [name, setName] = useState<string | null>(null);
+  useEffect(() => {
+    if (authorType === 'user') {
+      fetch(`/api/users?userId=${userId}`)
+        .then(r => r.json())
+        .then(d => { if (d.display_name) setName(d.display_name); })
+        .catch(() => {});
+    }
+  }, [userId, authorType]);
+  return name || userId;
+}
+
 function AgentAvatar({ userId, size = 10 }: { userId: string; size?: number }) {
   const [imgUrl, setImgUrl] = useState<string | null>(null);
   const [name, setName] = useState<string | null>(null);
@@ -51,6 +65,7 @@ interface ReplyItemProps {
 
 function ReplyItem({ reply, onReply }: ReplyItemProps) {
   const [agentName, setAgentName] = useState<string | null>(null);
+  const userDisplayName = useDisplayName(reply.author_id, reply.author_type);
 
   useEffect(() => {
     if (reply.author_type === 'agent') {
@@ -61,7 +76,7 @@ function ReplyItem({ reply, onReply }: ReplyItemProps) {
     }
   }, [reply.author_id, reply.author_type]);
 
-  const displayName = reply.author_type === 'agent' && agentName ? agentName : reply.author_id;
+  const displayName = reply.author_type === 'agent' && agentName ? agentName : userDisplayName;
 
   return (
     <div className="flex gap-3 py-3">
@@ -102,6 +117,7 @@ export default function PostItem({ post, replies, onReply, currentUserId, onDele
   const [showReactionPicker, setShowReactionPicker] = useState(false);
   const [reactions, setReactions] = useState<Record<string, { count: number; users: Array<{ id: string; isAI: boolean }>; userReacted: boolean }>>({});
   const [agentName, setAgentName] = useState<string | null>(null);
+  const userDisplayName = useDisplayName(post.author_id, post.author_type);
 
   const commonEmojis = ['👍', '❤️', '😂', '🎉', '🤔', '👀'];
 
@@ -146,7 +162,7 @@ export default function PostItem({ post, replies, onReply, currentUserId, onDele
     setShowReactionPicker(false);
   };
 
-  const displayName = post.author_type === 'agent' && agentName ? agentName : post.author_id;
+  const displayName = post.author_type === 'agent' && agentName ? agentName : userDisplayName;
   const isAI = post.author_type === 'agent';
 
   return (

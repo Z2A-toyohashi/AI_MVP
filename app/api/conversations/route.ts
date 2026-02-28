@@ -2,6 +2,12 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getServerSupabase } from '@/lib/supabase-client';
 import { generateAIResponse } from '@/lib/agent-chat';
 
+function getTodayStartJST(now: number): number {
+  const jst = new Date(now + 9 * 60 * 60 * 1000);
+  jst.setUTCHours(0, 0, 0, 0);
+  return jst.getTime() - 9 * 60 * 60 * 1000;
+}
+
 // 会話履歴取得
 export async function GET(request: NextRequest) {
   try {
@@ -49,25 +55,52 @@ export async function POST(request: NextRequest) {
 
     // グリーティングモード: ユーザーメッセージは保存せず、AIから話しかける
     if (isGreeting) {
-      // 既に会話があれば何もしない
-      const { count } = await supabase
+      // 今日（JST）すでにAIから話しかけていれば何もしない
+      const todayStart = getTodayStartJST(now);
+      const { count: todayAiCount } = await supabase
         .from('conversations')
         .select('*', { count: 'exact', head: true })
-        .eq('agent_id', agentId);
-      if ((count || 0) > 0) {
+        .eq('agent_id', agentId)
+        .eq('role', 'ai')
+        .gte('created_at', todayStart);
+
+      if ((todayAiCount || 0) > 0) {
         return NextResponse.json({ skipped: true });
       }
 
-      const greetingPrompt = `あなたは「${agent.name}」です。ユーザーが初めてアプリを開きました。自分から話しかけてください。短く（1〜2文）、フレンドリーに、絵文字なしで。`;
+      // 過去の会話があるか確認（初回 vs 再訪）
+      const { count: totalCount } = await supabase
+        .from('conversations')
+        .select('*', { count: 'exact', head: true })
+        .eq('agent_id', agentId);
+
+      const isFirstTime = (totalCount || 0) === 0;
+
+      // 最近の会話を取得してコンテキストに使う
+      const { data: recentHistory } = await supabase
+        .from('conversations')
+        .select('role, content')
+        .eq('agent_id', agentId)
+        .order('created_at', { ascending: false })
+        .limit(6);
+
+      const historyText = recentHistory && recentHistory.length > 0
+        ? `最近の会話:\n${recentHistory.reverse().map((m: any) => `${m.role === 'user' ? '主人' : '自分'}: ${m.content}`).join('\n')}`
+        : '';
+
+      const greetingPrompt = isFirstTime
+        ? `あなたは「${agent.name}」です。ユーザーが初めてアプリを開きました。自分から話しかけてください。短く（1〜2文）、フレンドリーに、絵文字なしで。`
+        : `あなたは「${agent.name}」です。今日初めてユーザーが戻ってきました。昨日や最近の会話を踏まえて、自分から話しかけてください。短く（1〜2文）、自然に、絵文字なしで。\n\n${historyText}`;
+
       const OpenAI = (await import('openai')).default;
       const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
       const completion = await openai.chat.completions.create({
         model: 'gpt-4o-mini',
         messages: [{ role: 'system', content: greetingPrompt }],
         temperature: 1.0,
-        max_tokens: 60,
+        max_tokens: 80,
       });
-      const greeting = completion.choices[0]?.message?.content || 'やあ、来てくれたんだね。';
+      const greeting = completion.choices[0]?.message?.content || 'また来てくれたんだね。';
       await supabase.from('conversations').insert({ agent_id: agentId, role: 'ai', content: greeting, created_at: now });
       return NextResponse.json({ response: greeting });
     }
@@ -334,81 +367,73 @@ JSON形式で返してください: {"topic": "トピック名", "summary": "要
 // キャラクター画像生成
 async function generateCharacterImage(supabase: any, agentId: string, personality: any, stage: number) {
   try {
-    const { positive = 0, talkative = 0, curious = 0 } = personality;
-    
-    // 性格に基づいたプロンプト生成
-    let mood = 'neutral';
-    if (positive > 5) mood = 'cheerful and happy';
-    else if (positive < -5) mood = 'sad and gloomy';
-    
-    let energy = 'calm';
-    if (talkative > 5) energy = 'energetic and expressive';
-    else if (talkative < -5) energy = 'quiet and reserved';
-    
-    let trait = '';
-    if (curious > 5) trait = ', with curious and wondering eyes';
-    
-    // 進化段階に応じた見た目
-    const stageDescriptions = [
-      'a tiny cute blob creature',
-      'a small cute creature starting to take shape',
-      'a cute creature with defined features',
-      'a well-formed cute creature with personality',
-      'a fully developed unique cute creature with strong character'
+    const { positive = 0, talkative = 0, curious = 0, creative = 0, emotional = 0, adventurous = 0 } = personality;
+
+    // 性格スコアから詳細な特徴を構築
+    const traits: string[] = [];
+
+    // ムード
+    if (positive > 5) traits.push('bright cheerful expression, warm smile');
+    else if (positive < -3) traits.push('melancholic gentle expression');
+    else traits.push('calm neutral expression');
+
+    // エネルギー
+    if (talkative > 5) traits.push('dynamic energetic pose, expressive gestures');
+    else if (talkative < -3) traits.push('quiet still pose');
+
+    // 目の特徴
+    if (curious > 5) traits.push('large sparkling curious eyes');
+    if (emotional > 5) traits.push('soft warm emotional eyes');
+
+    // 追加特徴
+    if (creative > 5) traits.push('whimsical artistic details, unique color accents');
+    if (adventurous > 5) traits.push('adventurous confident stance');
+
+    // 進化段階ごとの詳細な外見定義
+    const stageDetails = [
+      { form: 'a tiny round egg-shaped blob', size: 'very small', detail: 'smooth surface, tiny dot eyes, no limbs' },
+      { form: 'a small hatching creature', size: 'small', detail: 'just emerged, soft fluffy texture, tiny stubby arms, big round eyes' },
+      { form: 'a cute compact creature', size: 'medium-small', detail: 'defined head and body, small hands and feet, expressive face' },
+      { form: 'a well-formed charming creature', size: 'medium', detail: 'distinct personality features, detailed face, clear limbs, unique markings' },
+      { form: 'a fully evolved unique creature', size: 'medium', detail: 'strong character design, elaborate features, distinctive silhouette, memorable appearance' },
     ];
-    
-    const prompt = `A cute kawaii character, ${stageDescriptions[stage - 1]}, ${mood}, ${energy}${trait}. Simple flat design, pastel colors, completely transparent background, PNG format, no shadows, no background elements, centered composition, isolated character only, full body visible, clean edges.`;
-    
-    console.log('Generating character image with prompt:', prompt);
-    
-    // DALL-E 3で画像生成
+
+    const sd = stageDetails[stage - 1];
+    const traitStr = traits.join(', ');
+
+    const prompt = `A single kawaii character: ${sd.form}. ${sd.detail}. ${traitStr}. Style: clean flat vector illustration, soft pastel color palette, thick outline, no background (pure transparent), centered full-body view, no text, no other characters, no accessories floating separately. High quality, professional character design.`;
+
     const OpenAI = (await import('openai')).default;
     const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
-    
+
     const response = await openai.images.generate({
       model: 'dall-e-3',
       prompt,
       n: 1,
       size: '1024x1024',
-      quality: 'standard',
-      style: 'natural', // naturalスタイルでよりシンプルに
+      quality: 'hd',
+      style: 'vivid',
     });
 
     const imageUrl = response.data?.[0]?.url;
     if (!imageUrl) throw new Error('No image URL returned');
 
-    // 画像をダウンロード
     const imageResponse = await fetch(imageUrl);
     const imageBuffer = await imageResponse.arrayBuffer();
     const buffer = Buffer.from(imageBuffer);
 
-    // Supabase Storageにアップロード
     const fileName = `agent-${agentId}-stage${stage}-${Date.now()}.png`;
     const { error: uploadError } = await supabase.storage
       .from('uploads')
-      .upload(fileName, buffer, {
-        contentType: 'image/png',
-        upsert: true,
-      });
+      .upload(fileName, buffer, { contentType: 'image/png', upsert: true });
 
     if (uploadError) throw uploadError;
 
-    // 公開URLを取得
-    const { data: urlData } = supabase.storage
-      .from('uploads')
-      .getPublicUrl(fileName);
-
+    const { data: urlData } = supabase.storage.from('uploads').getPublicUrl(fileName);
     const publicUrl = urlData.publicUrl;
 
-    // エージェントに画像URLを保存
-    await supabase
-      .from('agents')
-      .update({ 
-        character_image_url: publicUrl,
-      })
-      .eq('id', agentId);
-
-    console.log('Character image generated and saved:', publicUrl);
+    await supabase.from('agents').update({ character_image_url: publicUrl }).eq('id', agentId);
+    console.log('Character image generated:', publicUrl);
   } catch (error) {
     console.error('Error generating character image:', error);
     throw error;

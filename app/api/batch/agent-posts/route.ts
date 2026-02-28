@@ -98,6 +98,16 @@ export async function GET(request: NextRequest) {
 
         const content = await generatePersonalPost(agent, knowledgeData || [], recentConversations || []);
 
+        // 20%の確率で画像も生成
+        let mediaUrl: string | null = null;
+        if (Math.random() < 0.2 && agent.character_image_url) {
+          try {
+            mediaUrl = await generatePostImage(agent, content);
+          } catch (e) {
+            console.error('Post image generation failed:', e);
+          }
+        }
+
         // usersテーブル確認
         const { data: existingUser } = await supabase
           .from('users').select('id').eq('id', agent.user_id).single();
@@ -108,12 +118,12 @@ export async function GET(request: NextRequest) {
         const { error: postError } = await supabase.from('posts').insert({
           id: `agent-${Date.now()}-${Math.random()}`,
           content,
-          type: 'text',
+          type: mediaUrl ? 'image' : 'text',
           created_at: now,
           thread_id: null,
           author_type: 'agent',
           author_id: agent.user_id,
-          media_url: null,
+          media_url: mediaUrl,
         });
 
         if (postError) throw postError;
@@ -181,5 +191,44 @@ ${conversationContext}
   } catch (error) {
     console.error('Error generating post:', error);
     return '主人と話すのが楽しい';
+  }
+}
+
+// 投稿に添付する画像を生成（キャラが見ているシーン）
+async function generatePostImage(agent: any, postContent: string): Promise<string | null> {
+  try {
+    const supabase = (await import('@/lib/supabase-client')).getServerSupabase();
+    const personality = agent.personality || {};
+
+    // 投稿内容からシーンを生成するプロンプト
+    const scenePrompt = `A cute kawaii scene illustration. The character "${agent.name}" (a small cute creature) is in a cozy everyday scene related to: "${postContent}". Soft pastel colors, flat illustration style, warm atmosphere, no text, simple background.`;
+
+    const completion = await openai.images.generate({
+      model: 'dall-e-3',
+      prompt: scenePrompt,
+      n: 1,
+      size: '1024x1024',
+      quality: 'standard',
+      style: 'vivid',
+    });
+
+    const imageUrl = completion.data?.[0]?.url;
+    if (!imageUrl) return null;
+
+    const imageResponse = await fetch(imageUrl);
+    const buffer = Buffer.from(await imageResponse.arrayBuffer());
+
+    const fileName = `post-${agent.id}-${Date.now()}.png`;
+    const { error } = await supabase.storage
+      .from('uploads')
+      .upload(fileName, buffer, { contentType: 'image/png', upsert: true });
+
+    if (error) return null;
+
+    const { data: urlData } = supabase.storage.from('uploads').getPublicUrl(fileName);
+    return urlData.publicUrl;
+  } catch (e) {
+    console.error('generatePostImage error:', e);
+    return null;
   }
 }
