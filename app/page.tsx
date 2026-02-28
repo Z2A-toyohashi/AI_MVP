@@ -75,7 +75,7 @@ export default function HomePage() {
 
   return (
     <div className="h-screen flex flex-col bg-white overflow-hidden">
-      <Header agent={agent} />
+      <Header agent={agent} onAgentUpdate={(updated) => setAgent(prev => prev ? { ...prev, ...updated } : prev)} />
 
       {/* XPバー + キャラ情報（アイコンなし・コンパクト） */}
       <div className="flex-shrink-0 px-4 py-2 border-b border-gray-100">

@@ -25,7 +25,7 @@ export default function AgentChat({ agent, onLevelUp }: Props) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
   const [sending, setSending] = useState(false);
-  const [levelUpNotification, setLevelUpNotification] = useState<{ level: number } | null>(null);
+  const [levelUpNotification, setLevelUpNotification] = useState<{ level: number; evolved: boolean } | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
@@ -41,6 +41,30 @@ export default function AgentChat({ agent, onLevelUp }: Props) {
 
   useEffect(() => { fetchMessages(); }, [agent.id]);
   useEffect(() => { messagesEndRef.current?.scrollIntoView({ behavior: 'instant' }); }, [messages]);
+
+  // 会話が空のとき、3秒後にAIから話しかける
+  useEffect(() => {
+    if (messages.length === 0 && !sending) {
+      const timer = setTimeout(async () => {
+        setSending(true);
+        try {
+          const res = await fetch('/api/conversations', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ agentId: agent.id, content: '__ai_greeting__', isGreeting: true }),
+          });
+          if (res.ok) {
+            await fetchMessages();
+          }
+        } catch (e) {
+          console.error(e);
+        } finally {
+          setSending(false);
+        }
+      }, 3000);
+      return () => clearTimeout(timer);
+    }
+  }, [messages.length, agent.id]);
 
   const fetchMessages = async () => {
     try {
@@ -69,9 +93,10 @@ export default function AgentChat({ agent, onLevelUp }: Props) {
         const data = await res.json();
         await fetchMessages();
         if (data.levelUp) {
-          setLevelUpNotification({ level: data.newLevel });
-          setTimeout(() => setLevelUpNotification(null), 3000);
-          setTimeout(() => { onLevelUp?.(); }, 3200);
+          const evolved = [3, 5, 7, 9].includes(data.newLevel);
+          setLevelUpNotification({ level: data.newLevel, evolved });
+          setTimeout(() => setLevelUpNotification(null), evolved ? 4000 : 3000);
+          setTimeout(() => { onLevelUp?.(); }, evolved ? 4200 : 3200);
         }
       }
     } catch (e) {
@@ -92,11 +117,23 @@ export default function AgentChat({ agent, onLevelUp }: Props) {
       {/* レベルアップ通知 */}
       {levelUpNotification && (
         <div className="fixed inset-0 flex items-center justify-center z-50 pointer-events-none">
-          <div className="animate-levelup bg-[#ffd900] text-gray-800 px-10 py-8 rounded-3xl shadow-2xl text-center border-4 border-[#ffb800]">
-            <div className="text-5xl mb-2">🎉</div>
-            <div className="text-2xl font-black">レベルアップ！</div>
-            <div className="text-4xl font-black text-[#ff9600] mt-1">Lv.{levelUpNotification.level}</div>
-          </div>
+          {levelUpNotification.evolved ? (
+            <div className="animate-levelup text-center px-10 py-8">
+              <div className="text-7xl mb-3 animate-bounce">✨</div>
+              <div className="bg-[#ffd900] text-gray-800 px-10 py-6 rounded-3xl shadow-2xl border-4 border-[#ffb800]">
+                <div className="text-2xl font-black mb-1">進化した！</div>
+                <div className="text-5xl font-black text-[#ff9600]">Lv.{levelUpNotification.level}</div>
+                <div className="text-sm font-bold text-gray-600 mt-2">見た目が変わったよ！</div>
+              </div>
+              <div className="text-7xl mt-3 animate-bounce" style={{ animationDelay: '150ms' }}>✨</div>
+            </div>
+          ) : (
+            <div className="animate-levelup bg-[#ffd900] text-gray-800 px-10 py-8 rounded-3xl shadow-2xl text-center border-4 border-[#ffb800]">
+              <div className="text-5xl mb-2">🎉</div>
+              <div className="text-2xl font-black">レベルアップ！</div>
+              <div className="text-4xl font-black text-[#ff9600] mt-1">Lv.{levelUpNotification.level}</div>
+            </div>
+          )}
         </div>
       )}
 

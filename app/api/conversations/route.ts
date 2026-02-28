@@ -29,7 +29,7 @@ export async function GET(request: NextRequest) {
 // 会話送信（ユーザー → AI）
 export async function POST(request: NextRequest) {
   try {
-    const { agentId, content } = await request.json();
+    const { agentId, content, isGreeting } = await request.json();
 
     if (!agentId || !content) {
       return NextResponse.json({ error: 'agentId and content required' }, { status: 400 });
@@ -37,6 +37,40 @@ export async function POST(request: NextRequest) {
 
     const supabase = getServerSupabase();
     const now = Date.now();
+
+    // エージェント情報取得
+    const { data: agent, error: agentError } = await supabase
+      .from('agents')
+      .select('*')
+      .eq('id', agentId)
+      .single();
+
+    if (agentError) throw agentError;
+
+    // グリーティングモード: ユーザーメッセージは保存せず、AIから話しかける
+    if (isGreeting) {
+      // 既に会話があれば何もしない
+      const { count } = await supabase
+        .from('conversations')
+        .select('*', { count: 'exact', head: true })
+        .eq('agent_id', agentId);
+      if ((count || 0) > 0) {
+        return NextResponse.json({ skipped: true });
+      }
+
+      const greetingPrompt = `あなたは「${agent.name}」です。ユーザーが初めてアプリを開きました。自分から話しかけてください。短く（1〜2文）、フレンドリーに、絵文字なしで。`;
+      const OpenAI = (await import('openai')).default;
+      const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+      const completion = await openai.chat.completions.create({
+        model: 'gpt-4o-mini',
+        messages: [{ role: 'system', content: greetingPrompt }],
+        temperature: 1.0,
+        max_tokens: 60,
+      });
+      const greeting = completion.choices[0]?.message?.content || 'やあ、来てくれたんだね。';
+      await supabase.from('conversations').insert({ agent_id: agentId, role: 'ai', content: greeting, created_at: now });
+      return NextResponse.json({ response: greeting });
+    }
 
     // ユーザーメッセージを保存
     const { error: userError } = await supabase
@@ -49,15 +83,6 @@ export async function POST(request: NextRequest) {
       });
 
     if (userError) throw userError;
-
-    // エージェント情報取得
-    const { data: agent, error: agentError } = await supabase
-      .from('agents')
-      .select('*')
-      .eq('id', agentId)
-      .single();
-
-    if (agentError) throw agentError;
 
     // 会話履歴を取得（直近20件、古い順）
     const { data: history } = await supabase
@@ -142,6 +167,18 @@ async function updateAgentProgress(supabase: any, agentId: string, agent: any, c
         console.error('Failed to generate character image:', err);
       });
     }
+
+    // 進化の軌跡に記録
+    const stageEmojis = ['🥚','🐣','🐥','🐤','🦜'];
+    const stageLabel = stageEmojis[appearanceStage - 1] || '🥚';
+    supabase.from('agent_evolution_history').insert({
+      agent_id: agentId,
+      level,
+      appearance_stage: appearanceStage,
+      stage_label: stageLabel,
+      evolved: appearanceStage > oldStage,
+      created_at: Date.now(),
+    }).then(() => {}).catch(() => {});
   }
   
   // 性格パラメータの更新（8次元）

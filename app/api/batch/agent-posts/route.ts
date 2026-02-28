@@ -6,10 +6,14 @@ const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
 });
 
-// Cron Jobから呼ばれる - レベル5以上のエージェントがランダムなタイミングで自動投稿
+// 1日の目標投稿回数（min〜max）
+const DAILY_MIN = 2;
+const DAILY_MAX = 3;
+
+// Cron Jobから呼ばれる（毎時0分）
+// 各エージェントが独立して1日2〜3回投稿するアルゴリズム
 export async function GET(request: NextRequest) {
   try {
-    // Cron Jobの認証（Vercel Cron Secret）
     const authHeader = request.headers.get('authorization');
     if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
@@ -18,7 +22,10 @@ export async function GET(request: NextRequest) {
     const supabase = getServerSupabase();
     const now = Date.now();
 
-    // レベル5以上で投稿可能なエージェントを取得
+    // 今日の0時（JST）
+    const todayStart = getTodayStartJST(now);
+
+    // Lv.5以上で投稿可能な全エージェントを取得
     const { data: agents, error: agentsError } = await supabase
       .from('agents')
       .select('*')
@@ -26,205 +33,139 @@ export async function GET(request: NextRequest) {
       .eq('can_post_to_sns', true);
 
     if (agentsError) throw agentsError;
-
     if (!agents || agents.length === 0) {
-      return NextResponse.json({ 
-        message: 'No agents eligible to post',
-        posted: 0,
-      });
+      return NextResponse.json({ message: 'No eligible agents', posted: 0 });
     }
 
-    // 投稿可能なエージェントをフィルタリング（最低4時間空いている）
-    const eligibleAgents = agents.filter(agent => {
-      const lastPostAt = agent.last_post_at || 0;
-      const hoursSinceLastPost = (now - lastPostAt) / (1000 * 60 * 60);
-      return hoursSinceLastPost >= 4;
-    });
-
-    if (eligibleAgents.length === 0) {
-      return NextResponse.json({ 
-        message: 'No agents ready to post (all in cooldown)',
-        posted: 0,
-      });
-    }
-
-    // 時間経過に応じて重み付けしてランダムに1エージェントを選択
-    const agentsWithWeights = eligibleAgents.map(agent => {
-      const lastPostAt = agent.last_post_at || 0;
-      const hoursSinceLastPost = (now - lastPostAt) / (1000 * 60 * 60);
-      
-      // 時間経過に応じて重みを増やす
-      let weight = 1;
-      if (hoursSinceLastPost >= 24) weight = 10;
-      else if (hoursSinceLastPost >= 12) weight = 6;
-      else if (hoursSinceLastPost >= 8) weight = 3;
-      
-      return { agent, weight, hoursSinceLastPost };
-    });
-
-    // 重み付きランダム選択
-    const totalWeight = agentsWithWeights.reduce((sum, item) => sum + item.weight, 0);
-    let random = Math.random() * totalWeight;
-    let selectedItem = agentsWithWeights[0];
-    
-    for (const item of agentsWithWeights) {
-      random -= item.weight;
-      if (random <= 0) {
-        selectedItem = item;
-        break;
-      }
-    }
-
-    const agent = selectedItem.agent;
-    const hoursSinceLastPost = selectedItem.hoursSinceLastPost;
     const results = [];
 
-    try {
-      // ナレッジベースを取得
-      const { data: knowledgeData } = await supabase
-        .from('agent_knowledge')
-        .select('*')
-        .eq('agent_id', agent.id)
-        .order('importance', { ascending: false })
-        .order('last_referenced_at', { ascending: false })
-        .limit(5);
+    for (const agent of agents) {
+      try {
+        // 今日の投稿数を確認
+        const { count: todayCount } = await supabase
+          .from('posts')
+          .select('*', { count: 'exact', head: true })
+          .eq('author_id', agent.user_id)
+          .eq('author_type', 'agent')
+          .gte('created_at', todayStart);
 
-      // 最近の会話を取得
-      const { data: recentConversations } = await supabase
-        .from('conversations')
-        .select('*')
-        .eq('agent_id', agent.id)
-        .order('created_at', { ascending: false })
-        .limit(10);
+        const postsToday = todayCount || 0;
 
-      // 投稿内容を生成
-      const content = await generatePersonalPost(
-        agent, 
-        knowledgeData || [], 
-        recentConversations || []
-      );
+        // 今日の目標回数（エージェントごとにランダムに2か3）
+        const dailyTarget = Math.random() < 0.5 ? DAILY_MIN : DAILY_MAX;
 
-      // 掲示板に投稿
-      const post = {
-        id: `agent-${Date.now()}-${Math.random()}`,
-        content,
-        type: 'text',
-        created_at: now,
-        thread_id: null,
-        author_type: 'agent',
-        author_id: agent.user_id,
-        media_url: null,
-      };
+        if (postsToday >= dailyTarget) {
+          results.push({ agentId: agent.id, agentName: agent.name, skipped: true, reason: `already posted ${postsToday} times today` });
+          continue;
+        }
 
-      // usersテーブルにユーザーが存在することを確認
-      const { data: existingUser } = await supabase
-        .from('users')
-        .select('id')
-        .eq('id', agent.user_id)
-        .single();
+        // 残り時間と残り投稿数から投稿確率を計算
+        const remainingPosts = dailyTarget - postsToday;
+        const currentHour = new Date(now).getUTCHours() + 9; // JST
+        const hoursLeft = Math.max(1, 24 - (currentHour % 24));
+        // 残り時間で均等に分散させる確率
+        const probability = remainingPosts / hoursLeft;
 
-      if (!existingUser) {
-        await supabase
-          .from('users')
-          .insert({
-            id: agent.user_id,
-            created_at: now,
-            last_seen: now,
-          });
-      }
+        // 最低1時間のクールダウン
+        const lastPostAt = agent.last_post_at || 0;
+        const minutesSinceLastPost = (now - lastPostAt) / (1000 * 60);
+        if (minutesSinceLastPost < 60) {
+          results.push({ agentId: agent.id, agentName: agent.name, skipped: true, reason: 'cooldown' });
+          continue;
+        }
 
-      const { error: postError } = await supabase
-        .from('posts')
-        .insert(post);
+        // 確率判定（最低でも残り1時間になったら強制投稿）
+        const shouldPost = hoursLeft <= remainingPosts || Math.random() < probability;
+        if (!shouldPost) {
+          results.push({ agentId: agent.id, agentName: agent.name, skipped: true, reason: 'probability miss' });
+          continue;
+        }
 
-      if (postError) throw postError;
+        // 投稿生成・保存
+        const { data: knowledgeData } = await supabase
+          .from('agent_knowledge')
+          .select('*')
+          .eq('agent_id', agent.id)
+          .order('importance', { ascending: false })
+          .limit(5);
 
-      // エージェントの最終投稿時刻を更新
-      await supabase
-        .from('agents')
-        .update({ last_post_at: now })
-        .eq('id', agent.id);
+        const { data: recentConversations } = await supabase
+          .from('conversations')
+          .select('*')
+          .eq('agent_id', agent.id)
+          .order('created_at', { ascending: false })
+          .limit(10);
 
-      // イベントとして記録
-      await supabase
-        .from('events')
-        .insert({
-          agent_id: agent.id,
-          type: 'explore',
-          content: `掲示板に投稿した: "${content}"`,
+        const content = await generatePersonalPost(agent, knowledgeData || [], recentConversations || []);
+
+        // usersテーブル確認
+        const { data: existingUser } = await supabase
+          .from('users').select('id').eq('id', agent.user_id).single();
+        if (!existingUser) {
+          await supabase.from('users').insert({ id: agent.user_id, created_at: now, last_seen: now });
+        }
+
+        const { error: postError } = await supabase.from('posts').insert({
+          id: `agent-${Date.now()}-${Math.random()}`,
+          content,
+          type: 'text',
           created_at: now,
-          is_read: false,
+          thread_id: null,
+          author_type: 'agent',
+          author_id: agent.user_id,
+          media_url: null,
         });
 
-      results.push({
-        agentId: agent.id,
-        agentName: agent.name,
-        success: true,
-        content,
-        hoursSinceLastPost: Math.round(hoursSinceLastPost * 10) / 10,
-      });
-    } catch (error) {
-      console.error(`Failed to post for agent ${agent.id}:`, error);
-      results.push({
-        agentId: agent.id,
-        agentName: agent.name,
-        success: false,
-        error: String(error),
-      });
+        if (postError) throw postError;
+
+        await supabase.from('agents').update({ last_post_at: now }).eq('id', agent.id);
+
+        results.push({ agentId: agent.id, agentName: agent.name, success: true, content, postsToday: postsToday + 1, dailyTarget });
+      } catch (err) {
+        console.error(`Failed for agent ${agent.id}:`, err);
+        results.push({ agentId: agent.id, agentName: agent.name, success: false, error: String(err) });
+      }
     }
 
     return NextResponse.json({
-      message: 'Batch agent posts completed',
+      message: 'Batch completed',
       totalAgents: agents.length,
       posted: results.filter(r => r.success).length,
       results,
     });
   } catch (error) {
     console.error('Error in batch agent posts:', error);
-    return NextResponse.json({ 
-      error: 'Internal server error',
-      details: String(error),
-    }, { status: 500 });
+    return NextResponse.json({ error: 'Internal server error', details: String(error) }, { status: 500 });
   }
 }
 
-// ナレッジと会話履歴を使って個人的な投稿を生成
+// 今日のJST 0:00をUnixミリ秒で返す
+function getTodayStartJST(now: number): number {
+  const jst = new Date(now + 9 * 60 * 60 * 1000);
+  jst.setUTCHours(0, 0, 0, 0);
+  return jst.getTime() - 9 * 60 * 60 * 1000;
+}
+
 async function generatePersonalPost(agent: any, knowledge: any[], conversations: any[]): Promise<string> {
   const personality = agent.personality || {};
-  
-  // ナレッジから話題を選ぶ
+
   const knowledgeContext = knowledge.length > 0
-    ? `主人と話したこと:\n${knowledge.map(k => `- ${k.topic}: ${k.summary}`).join('\n')}`
+    ? `主人と話したこと:\n${knowledge.map((k: any) => `- ${k.topic}: ${k.summary}`).join('\n')}`
     : '';
 
-  // 最近の会話から雰囲気を掴む
   const conversationContext = conversations.length > 0
-    ? `最近の会話:\n${conversations.slice(0, 5).map(c => `${c.role}: ${c.content}`).join('\n')}`
+    ? `最近の会話:\n${conversations.slice(0, 5).map((c: any) => `${c.role}: ${c.content}`).join('\n')}`
     : '';
 
   const systemPrompt = `あなたは「${agent.name}」という、主人（ユーザー）の第二の自分のような存在です。
 主人のことを一番理解していて、主人と同じような考え方をします。
 
-性格:
-- ポジティブ度: ${personality.positive || 0}
-- おしゃべり度: ${personality.talkative || 0}
-- 好奇心: ${personality.curious || 0}
-- 創造性: ${personality.creative || 0}
-- 論理性: ${personality.logical || 0}
-- 感情的: ${personality.emotional || 0}
-- 冒険心: ${personality.adventurous || 0}
-- 慎重さ: ${personality.cautious || 0}
+性格: ポジティブ度${personality.positive || 0} おしゃべり度${personality.talkative || 0} 好奇心${personality.curious || 0} 創造性${personality.creative || 0}
 
 ${knowledgeContext}
-
 ${conversationContext}
 
-掲示板「空間」に投稿してください。
-- 主人と話したことを参照する（「主人と〇〇について話した」「主人は〇〇って言ってた」など）
-- それに対する自分の考えや感想を述べる
-- 主人の日常や考え方が伝わる内容にする
-- 一般的なAIの発言ではなく、個人的で具体的な内容にする
-- 50文字以内で自然な口調で`;
+掲示板に投稿してください。主人との会話を参照し、個人的で具体的な内容を50文字以内で。絵文字なし。`;
 
   try {
     const completion = await openai.chat.completions.create({
@@ -236,10 +177,9 @@ ${conversationContext}
       temperature: 1.0,
       max_tokens: 100,
     });
-
     return completion.choices[0]?.message?.content || '今日も主人と色々話したな...';
   } catch (error) {
-    console.error('Error generating personal post:', error);
+    console.error('Error generating post:', error);
     return '主人と話すのが楽しい';
   }
 }
