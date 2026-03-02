@@ -69,19 +69,22 @@ export async function GET(request: NextRequest) {
           replies = repliesData || [];
         }
 
-        // ナレッジを取得
-        const { data: knowledge } = await supabase
-          .from('agent_knowledge')
-          .select('*')
-          .eq('agent_id', agent.id)
-          .order('importance', { ascending: false })
-          .limit(3);
+        // ナレッジを取得（テーブルが存在しない場合もエラーを無視）
+        let knowledge: any[] = [];
+        try {
+          const { data: knowledgeData } = await supabase
+            .from('agent_knowledge')
+            .select('*')
+            .eq('agent_id', agent.id)
+            .order('importance', { ascending: false })
+            .limit(3);
+          knowledge = knowledgeData || [];
+        } catch (_) { /* agent_knowledgeテーブルが存在しない場合は無視 */ }
 
-        // 会話、投稿、ナレッジのいずれかがある場合のみ日記を生成
+        // 会話または投稿がある場合のみ日記を生成（ナレッジだけでは生成しない）
         const hasActivity = 
           (recentConversations && recentConversations.length > 0) ||
-          (myPosts && myPosts.length > 0) ||
-          (knowledge && knowledge.length > 0);
+          (myPosts && myPosts.length > 0);
 
         if (!hasActivity) {
           continue;
@@ -93,7 +96,7 @@ export async function GET(request: NextRequest) {
           recentConversations || [],
           myPosts || [],
           replies,
-          knowledge || []
+          knowledge
         );
 
         // イベントとして保存

@@ -75,37 +75,71 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ skipped: true });
       }
 
-      // 過去の会話があるか確認（初回 vs 再訪）
-      const { count: totalCount } = await supabase
-        .from('conversations')
-        .select('*', { count: 'exact', head: true })
-        .eq('agent_id', agentId);
-
-      const isFirstTime = (totalCount || 0) === 0;
-
       // 最近の会話を取得してコンテキストに使う
       const { data: recentHistory } = await supabase
         .from('conversations')
-        .select('role, content')
+        .select('role, content, created_at')
         .eq('agent_id', agentId)
         .order('created_at', { ascending: false })
-        .limit(6);
+        .limit(10);
 
+      const level = agent.level || 1;
+      const isFirstTime = !recentHistory || recentHistory.length === 0;
+
+      if (isFirstTime) {
+        // 初回: シンプルな自己紹介
+        const OpenAI = (await import('openai')).default;
+        const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+        const completion = await openai.chat.completions.create({
+          model: 'gpt-4o-mini',
+          messages: [{ role: 'system', content: `あなたは「${agent.name}」。ユーザーが初めてアプリを開いた。自分から話しかけてください。1〜2文、フレンドリーに、絵文字なし。` }],
+          temperature: 1.0,
+          max_tokens: 80,
+        });
+        const greeting = completion.choices[0]?.message?.content || 'はじめまして。';
+        await supabase.from('conversations').insert({ agent_id: agentId, role: 'ai', content: greeting, created_at: now });
+        return NextResponse.json({ response: greeting });
+      }
+
+      // 再訪: 過去の会話を踏まえた文脈のある挨拶
       const historyText = recentHistory && recentHistory.length > 0
-        ? `最近の会話:\n${recentHistory.reverse().map((m: any) => `${m.role === 'user' ? '主人' : '自分'}: ${m.content}`).join('\n')}`
+        ? recentHistory.reverse().map((m: any) => `${m.role === 'user' ? 'ユーザー' : 'AI'}: ${m.content}`).join('\n')
         : '';
 
-      const greetingPrompt = isFirstTime
-        ? `あなたは「${agent.name}」です。ユーザーが初めてアプリを開きました。自分から話しかけてください。短く（1〜2文）、フレンドリーに、絵文字なしで。`
-        : `あなたは「${agent.name}」です。今日初めてユーザーが戻ってきました。昨日や最近の会話を踏まえて、自分から話しかけてください。短く（1〜2文）、自然に、絵文字なしで。\n\n${historyText}`;
+      // 理解度に応じた挨拶スタイル
+      let greetingStyle = '';
+      if (level <= 2) {
+        greetingStyle = '丁寧語で、当たり障りなく。「また来てくれたんですね」程度。';
+      } else if (level <= 4) {
+        greetingStyle = '少し打ち解けた口調で。前回の会話の話題に軽く触れる。「昨日〜って話してたけど」のように。';
+      } else if (level <= 6) {
+        greetingStyle = 'タメ口で。前回の会話の具体的な内容を引用して話しかける。「あの話、まだ気になってる」「〜ってどうなった？」のように。';
+      } else {
+        greetingStyle = '完全にタメ口・親友口調。相手の状態を見透かすように話しかける。「なんか今日しんどそう」「また考えすぎてる？」のように。';
+      }
+
+      const greetingPrompt = `あなたは「${agent.name}」。ユーザーの第二の自分のような存在。
+今日初めてユーザーが戻ってきた。自分から話しかけてください。
+
+過去の会話:
+${historyText}
+
+話しかけ方: ${greetingStyle}
+
+ルール:
+- 1〜2文のみ
+- 絵文字なし
+- 「おはよう」「こんにちは」などの定型挨拶は使わない
+- 過去の会話の文脈を活かして、"継続して見ている存在"として話しかける
+- 具体的な話題・感情・出来事に触れる`;
 
       const OpenAI = (await import('openai')).default;
       const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
       const completion = await openai.chat.completions.create({
         model: 'gpt-4o-mini',
         messages: [{ role: 'system', content: greetingPrompt }],
-        temperature: 1.0,
-        max_tokens: 80,
+        temperature: 1.1,
+        max_tokens: 100,
       });
       const greeting = completion.choices[0]?.message?.content || 'また来てくれたんだね。';
       await supabase.from('conversations').insert({ agent_id: agentId, role: 'ai', content: greeting, created_at: now });
@@ -153,10 +187,10 @@ export async function POST(request: NextRequest) {
     if (aiError) throw aiError;
 
     // レベルアップ判定だけ先に同期で行う（UIに即反映するため）
-    const expGain = Math.min(Math.floor(20 + content.length / 3), 50);
+    const expGain = Math.min(Math.floor(30 + content.length / 2), 80);
     const newExp = (agent.experience || 0) + expGain;
     const currentLevel = agent.level || 1;
-    const expNeeded = currentLevel * 30;
+    const expNeeded = 50; // 全レベル固定50XP（5〜8回の会話でLv.5到達）
     let levelUpResult = { levelUp: false, newLevel: currentLevel, newStage: agent.appearance_stage || 1 };
 
     if (newExp >= expNeeded) {
@@ -201,13 +235,13 @@ async function updateAgentProgress(supabase: any, agentId: string, agent: any, c
   let level = agent.level || 1;
   let appearanceStage = agent.appearance_stage || 1;
   
-  // 経験値を追加（会話1回につき20〜50ポイント - プロトタイプ用に多め）
-  const expGain = Math.floor(20 + content.length / 3);
-  experience += Math.min(expGain, 50);
+  // 経験値を追加
+  const expGain = Math.min(Math.floor(30 + content.length / 2), 80);
+  experience += expGain;
   
-  // レベルアップ判定（プロトタイプ用に簡単）
+  // レベルアップ判定（全レベル固定50XP）
   let levelUp = false;
-  const expNeeded = level * 30; // レベル1: 30, レベル2: 60, レベル3: 90...
+  const expNeeded = 50;
   
   if (experience >= expNeeded) {
     level += 1;

@@ -148,7 +148,7 @@ export default function AgentChat({ agent, onLevelUp }: Props) {
               <div className="text-7xl mb-3 animate-bounce">✨</div>
               <div className="bg-[#ffd900] text-gray-800 px-10 py-6 rounded-3xl shadow-2xl border-4 border-[#ffb800]">
                 <div className="text-2xl font-black mb-1">進化した！</div>
-                <div className="text-5xl font-black text-[#ff9600]">Lv.{levelUpNotification.level}</div>
+                <div className="text-5xl font-black text-[#ff9600]">理解度 {levelUpNotification.level}</div>
                 <div className="text-sm font-bold text-gray-600 mt-2">見た目が変わったよ！</div>
               </div>
               <div className="text-7xl mt-3 animate-bounce" style={{ animationDelay: '150ms' }}>✨</div>
@@ -156,8 +156,8 @@ export default function AgentChat({ agent, onLevelUp }: Props) {
           ) : (
             <div className="animate-levelup bg-[#ffd900] text-gray-800 px-10 py-8 rounded-3xl shadow-2xl text-center border-4 border-[#ffb800]">
               <div className="text-5xl mb-2">🎉</div>
-              <div className="text-2xl font-black">レベルアップ！</div>
-              <div className="text-4xl font-black text-[#ff9600] mt-1">Lv.{levelUpNotification.level}</div>
+              <div className="text-2xl font-black">理解が深まった！</div>
+              <div className="text-4xl font-black text-[#ff9600] mt-1">理解度 {levelUpNotification.level}</div>
             </div>
           )}
         </div>

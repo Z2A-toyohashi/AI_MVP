@@ -167,7 +167,7 @@ export default function Header({ agent, title = 'AI Living Lab', showBack = fals
                     </div>
                     <div className="flex items-center gap-2 mt-0.5 flex-wrap">
                       <span className="text-xs font-bold text-[#ff9600] bg-white px-2 py-0.5 rounded-full border border-[#ffd900]">
-                        Lv.{agent.level}
+                        理解度 {agent.level}
                       </span>
                       {agent.can_post_to_sns && (
                         <span className="text-xs font-bold text-[#58cc02] bg-white px-2 py-0.5 rounded-full border border-[#58cc02]">
@@ -181,11 +181,11 @@ export default function Header({ agent, title = 'AI Living Lab', showBack = fals
                 {/* XPバー */}
                 <div className="mb-3">
                   <div className="flex justify-between text-xs font-bold text-gray-500 mb-1">
-                    <span>経験値</span>
-                    <span>{agent.experience} / {agent.level * 30} XP</span>
+                    <span>あなたへの理解度</span>
+                    <span>{agent.experience} / 50 XP</span>
                   </div>
                   <div className="xp-bar">
-                    <div className="xp-fill" style={{ width: `${Math.min((agent.experience / (agent.level * 30)) * 100, 100)}%` }} />
+                    <div className="xp-fill" style={{ width: `${Math.min((agent.experience / 50) * 100, 100)}%` }} />
                   </div>
                 </div>
 
@@ -214,7 +214,7 @@ export default function Header({ agent, title = 'AI Living Lab', showBack = fals
                 <span className="text-2xl flex-shrink-0">{milestone.icon}</span>
                 <div className="flex-1 min-w-0">
                   <p className="text-[11px] font-bold text-[#1cb0f6] mb-0.5">次のマイルストーン</p>
-                  <p className="text-sm font-black text-gray-700">Lv.{milestone.level}で{milestone.label}</p>
+                  <p className="text-sm font-black text-gray-700">理解度{milestone.level}で{milestone.label}</p>
                 </div>
               </div>
             )}
@@ -288,7 +288,7 @@ export default function Header({ agent, title = 'AI Living Lab', showBack = fals
                 </div>
                 <div>
                   <p className="font-black text-gray-800">{agent.name}</p>
-                  <p className="text-xs font-bold text-[#ff9600]">現在 Lv.{agent.level}</p>
+                  <p className="text-xs font-bold text-[#ff9600]">現在 理解度 {agent.level}</p>
                 </div>
               </div>
 
@@ -307,7 +307,7 @@ export default function Header({ agent, title = 'AI Living Lab', showBack = fals
                       </div>
                       <div className="flex-1 bg-gray-50 rounded-2xl px-3 py-2">
                         <div className="flex items-center gap-2">
-                          <span className="font-black text-gray-800 text-sm">Lv.{entry.level}</span>
+                          <span className="font-black text-gray-800 text-sm">理解度 {entry.level}</span>
                           {entry.evolved && <span className="text-[10px] font-black text-[#ff9600] bg-[#fff9e6] px-2 py-0.5 rounded-full border border-[#ffd900]">進化！</span>}
                         </div>
                         <p className="text-[11px] text-gray-400 font-bold mt-0.5">

@@ -69,7 +69,7 @@ export default function HomePage() {
     );
   }
 
-  const expNeeded = agent.level * 30;
+  const expNeeded = 50; // 全レベル固定50XP
   const expPct = Math.min((agent.experience / expNeeded) * 100, 100);
 
   const getNextMilestone = (level: number) => {
@@ -91,14 +91,14 @@ export default function HomePage() {
           <div className="flex-1 min-w-0">
             <div className="flex items-center justify-between mb-1">
               <span className="font-black text-gray-800 text-sm truncate">{agent.name}</span>
-              <span className="text-xs font-bold text-[#ff9600] ml-2 flex-shrink-0">Lv.{agent.level}</span>
+              <span className="text-xs font-bold text-[#ff9600] ml-2 flex-shrink-0">理解度 {agent.level}</span>
             </div>
             <div className="xp-bar">
               <div className="xp-fill" style={{ width: `${expPct}%` }} />
             </div>
             <div className="flex justify-between mt-0.5">
               <span className="text-[10px] text-gray-400 font-bold">
-                {nextMilestone ? `Lv.${nextMilestone.level}で${nextMilestone.label}` : '最大レベル到達！'}
+                {nextMilestone ? `理解度${nextMilestone.level}で${nextMilestone.label}` : 'あなたのことを深く理解している'}
               </span>
               <span className="text-[10px] text-gray-400 font-bold">{agent.experience}/{expNeeded} XP</span>
             </div>
