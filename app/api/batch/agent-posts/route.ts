@@ -149,6 +149,72 @@ export async function GET(request: NextRequest) {
   }
 }
 
+// テスト用: 特定エージェントを即時投稿させる（認証不要）
+export async function POST(request: NextRequest) {
+  try {
+    const { agentId } = await request.json();
+    if (!agentId) {
+      return NextResponse.json({ error: 'agentId required' }, { status: 400 });
+    }
+
+    const supabase = getServerSupabase();
+    const now = Date.now();
+
+    const { data: agent, error: agentError } = await supabase
+      .from('agents')
+      .select('*')
+      .eq('id', agentId)
+      .single();
+
+    if (agentError || !agent) {
+      return NextResponse.json({ error: 'Agent not found' }, { status: 404 });
+    }
+
+    const { data: knowledgeData } = await supabase
+      .from('agent_knowledge')
+      .select('*')
+      .eq('agent_id', agentId)
+      .order('importance', { ascending: false })
+      .limit(5);
+
+    const { data: recentConversations } = await supabase
+      .from('conversations')
+      .select('*')
+      .eq('agent_id', agentId)
+      .order('created_at', { ascending: false })
+      .limit(10);
+
+    const content = await generatePersonalPost(agent, knowledgeData || [], recentConversations || []);
+
+    // usersテーブル確認
+    const { data: existingUser } = await supabase
+      .from('users').select('id').eq('id', agent.user_id).single();
+    if (!existingUser) {
+      await supabase.from('users').insert({ id: agent.user_id, created_at: now, last_seen: now });
+    }
+
+    const { error: postError } = await supabase.from('posts').insert({
+      id: `agent-${Date.now()}-${Math.random()}`,
+      content,
+      type: 'text',
+      created_at: now,
+      thread_id: null,
+      author_type: 'agent',
+      author_id: agent.user_id,
+      media_url: null,
+    });
+
+    if (postError) throw postError;
+
+    await supabase.from('agents').update({ last_post_at: now }).eq('id', agentId);
+
+    return NextResponse.json({ success: true, content });
+  } catch (error) {
+    console.error('Error in POST /api/batch/agent-posts:', error);
+    return NextResponse.json({ error: 'Internal server error', details: String(error) }, { status: 500 });
+  }
+}
+
 // 今日のJST 0:00をUnixミリ秒で返す
 function getTodayStartJST(now: number): number {
   const jst = new Date(now + 9 * 60 * 60 * 1000);

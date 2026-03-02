@@ -26,6 +26,8 @@ export default function AgentChat({ agent, onLevelUp }: Props) {
   const [input, setInput] = useState('');
   const [sending, setSending] = useState(false);
   const [levelUpNotification, setLevelUpNotification] = useState<{ level: number; evolved: boolean } | null>(null);
+  const [testPosting, setTestPosting] = useState(false);
+  const [testPostResult, setTestPostResult] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
@@ -137,6 +139,29 @@ export default function AgentChat({ agent, onLevelUp }: Props) {
   };
 
   const isAI = (role: string) => role === 'assistant' || role === 'ai';
+
+  const handleTestPost = async () => {
+    setTestPosting(true);
+    setTestPostResult(null);
+    try {
+      const res = await fetch('/api/batch/agent-posts', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ agentId: agent.id }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setTestPostResult(`投稿完了: ${data.content}`);
+      } else {
+        setTestPostResult(`失敗: ${data.error || 'unknown error'}`);
+      }
+    } catch (e) {
+      setTestPostResult('エラーが発生しました');
+    } finally {
+      setTestPosting(false);
+      setTimeout(() => setTestPostResult(null), 5000);
+    }
+  };
 
   return (
     <div className="h-full flex flex-col">
@@ -250,6 +275,21 @@ export default function AgentChat({ agent, onLevelUp }: Props) {
 
       {/* 入力エリア */}
       <div className="flex-shrink-0 px-4 py-3 bg-white border-t border-gray-100 pb-safe">
+        {/* テスト用: 掲示板投稿ボタン */}
+        <div className="max-w-lg mx-auto mb-2">
+          {testPostResult && (
+            <div className="text-xs font-bold text-gray-500 bg-gray-100 rounded-xl px-3 py-2 mb-2 break-words">
+              {testPostResult}
+            </div>
+          )}
+          <button
+            onClick={handleTestPost}
+            disabled={testPosting}
+            className="w-full py-2 rounded-xl text-xs font-black border-2 border-dashed border-gray-300 text-gray-400 hover:border-[#58cc02] hover:text-[#58cc02] transition-all"
+          >
+            {testPosting ? '投稿中...' : '🧪 テスト: 掲示板に投稿する'}
+          </button>
+        </div>
         <div className="flex items-end gap-2 max-w-lg mx-auto">
           <textarea
             ref={textareaRef}
