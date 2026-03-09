@@ -2,11 +2,15 @@
   "crons": [
     {
       "path": "/api/batch/agent-posts",
-      "schedule": "0 * * * *"
+      "schedule": "0 */3 * * *"
     },
     {
       "path": "/api/batch/daily-diary",
       "schedule": "0 14 * * *"
+    },
+    {
+      "path": "/api/batch/agent-interactions",
+      "schedule": "0 */4 * * *"
     }
   ]
 }

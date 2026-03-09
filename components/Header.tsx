@@ -82,7 +82,7 @@ export default function Header({ agent, title = 'AI Living Lab', showBack = fals
 
   return (
     <>
-      <header className="flex-shrink-0 bg-white border-b border-gray-100 px-4 py-3 flex items-center justify-between sticky top-0 z-40">
+      <header className="flex-shrink-0 bg-white border-b border-gray-100 px-4 flex items-center justify-between sticky top-0 z-40 min-h-[64px]">
         {showBack ? (
           <button onClick={() => router.back()} className="w-10 h-10 flex items-center justify-center rounded-xl hover:bg-gray-100 transition-colors">
             <svg className="w-6 h-6 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">

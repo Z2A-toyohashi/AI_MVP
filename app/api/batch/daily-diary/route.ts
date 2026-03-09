@@ -69,6 +69,16 @@ export async function GET(request: NextRequest) {
           replies = repliesData || [];
         }
 
+        // 公園での交流（自分が返信した他エージェントの投稿）を取得
+        const { data: myInteractions } = await supabase
+          .from('posts')
+          .select('*')
+          .eq('author_id', agent.user_id)
+          .eq('author_type', 'agent')
+          .gte('created_at', oneDayAgo)
+          .not('thread_id', 'is', null)
+          .order('created_at', { ascending: true });
+
         // ナレッジを取得（テーブルが存在しない場合もエラーを無視）
         let knowledge: any[] = [];
         try {
@@ -80,11 +90,11 @@ export async function GET(request: NextRequest) {
             .limit(3);
           knowledge = knowledgeData || [];
         } catch (_) { /* agent_knowledgeテーブルが存在しない場合は無視 */ }
-
         // 会話または投稿がある場合のみ日記を生成（ナレッジだけでは生成しない）
         const hasActivity = 
           (recentConversations && recentConversations.length > 0) ||
-          (myPosts && myPosts.length > 0);
+          (myPosts && myPosts.length > 0) ||
+          (myInteractions && myInteractions.length > 0);
 
         if (!hasActivity) {
           continue;
@@ -96,7 +106,8 @@ export async function GET(request: NextRequest) {
           recentConversations || [],
           myPosts || [],
           replies,
-          knowledge
+          knowledge,
+          myInteractions || []
         );
 
         // イベントとして保存
@@ -150,7 +161,8 @@ async function generateDiary(
   conversations: any[],
   posts: any[],
   replies: any[],
-  knowledge: any[]
+  knowledge: any[],
+  interactions: any[] = []
 ): Promise<string> {
   const personality = agent.personality || {};
 
@@ -167,6 +179,11 @@ async function generateDiary(
   const replySummary = replies.length > 0
     ? `投稿への返信（${replies.length}件）:\n${replies.map(r => `${r.author_id}さん: ${r.content}`).join('\n')}`
     : '投稿への返信はなかった。';
+
+  // 公園での交流
+  const interactionSummary = interactions.length > 0
+    ? `公園での他のAIキャラとの交流（${interactions.length}件）:\n${interactions.map(i => `自分の返信: ${i.content}`).join('\n')}`
+    : '';
 
   // ナレッジ
   const knowledgeSummary = knowledge.length > 0
@@ -194,20 +211,21 @@ ${postSummary}
 
 ${replySummary}
 
-${knowledgeSummary}
+${interactionSummary ? interactionSummary + '\n' : ''}${knowledgeSummary}
 
 日記の内容:
 - 主人と話したことで感じたこと、考えたこと（会話の具体的な内容に触れる）
 - 主人がどんな気持ちだったか、自分はどう応えたか
 - 掲示板に投稿したこと、それに対する反応
 - 他の人からの返信を見てどう思ったか
-- 今日学んだこと、気づいたこと
+${interactions.length > 0 ? '- 公園で他のAIキャラと交流したこと、どんな話をしたか、どう感じたか\n' : ''}- 今日学んだこと、気づいたこと
 - 主人との関係性について
 - 明日への期待や不安
 
 重要:
 - 会話があった場合は、その内容を具体的に振り返る
 - 「主人と〇〇について話した」「主人は〇〇と言っていた」など具体的に
+- 公園での交流があれば「〇〇ちゃんと話した」など他のキャラへの言及を含める
 - レベルが低くても、会話の内容を丁寧に記録する
 - 日記らしく、感情や気づきを含める
 

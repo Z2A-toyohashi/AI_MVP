@@ -24,8 +24,36 @@ interface Agent {
 export default function HomePage() {
   const [agent, setAgent] = useState<Agent | null>(null);
   const [loading, setLoading] = useState(true);
+  const [editingName, setEditingName] = useState(false);
+  const [nameInput, setNameInput] = useState('');
+  const [savingName, setSavingName] = useState(false);
 
   useEffect(() => { initAgent(); }, []);
+
+  const handleSaveName = async () => {
+    if (!agent || !nameInput.trim() || nameInput.trim() === agent.name) {
+      setEditingName(false);
+      return;
+    }
+    if (nameInput.trim().length > 20) return;
+    setSavingName(true);
+    try {
+      const res = await fetch('/api/agents', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ agentId: agent.id, name: nameInput.trim() }),
+      });
+      if (res.ok) {
+        const updated = await res.json();
+        setAgent(prev => prev ? { ...prev, ...updated } : prev);
+      }
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setSavingName(false);
+      setEditingName(false);
+    }
+  };
 
   const initAgent = async () => {
     try {
@@ -85,12 +113,40 @@ export default function HomePage() {
     <div className="h-screen flex flex-col bg-white overflow-hidden">
       <Header agent={agent} onAgentUpdate={(updated) => setAgent(prev => prev ? { ...prev, ...updated } : prev)} />
 
-      {/* XPバー + キャラ情報（アイコンなし・コンパクト） */}
+      {/* XPバー + キャラ情報（名前インライン編集対応） */}
       <div className="flex-shrink-0 px-4 py-2 border-b border-gray-100">
         <div className="flex items-center gap-3 max-w-lg mx-auto">
           <div className="flex-1 min-w-0">
             <div className="flex items-center justify-between mb-1">
-              <span className="font-black text-gray-800 text-sm truncate">{agent.name}</span>
+              {editingName ? (
+                <div className="flex items-center gap-1 flex-1 mr-2">
+                  <input
+                    autoFocus
+                    value={nameInput}
+                    onChange={(e) => setNameInput(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === 'Enter') handleSaveName(); if (e.key === 'Escape') setEditingName(false); }}
+                    className="flex-1 text-sm font-black text-gray-800 border-b-2 border-[#58cc02] bg-transparent focus:outline-none min-w-0"
+                    maxLength={20}
+                  />
+                  <button onClick={handleSaveName} disabled={savingName || !nameInput.trim()} className="text-[#58cc02] font-black text-xs px-2 py-1 rounded-lg bg-[#f0fce4] flex-shrink-0">
+                    {savingName ? '...' : '保存'}
+                  </button>
+                  <button onClick={() => setEditingName(false)} className="text-gray-400 text-xs px-1 flex-shrink-0">✕</button>
+                </div>
+              ) : (
+                <div className="flex items-center gap-1 flex-1 min-w-0">
+                  <span className="font-black text-gray-800 text-sm truncate">{agent.name}</span>
+                  <button
+                    onClick={() => { setNameInput(agent.name); setEditingName(true); }}
+                    className="flex-shrink-0 text-gray-400 hover:text-[#58cc02] transition-colors"
+                    aria-label="名前を編集"
+                  >
+                    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+                    </svg>
+                  </button>
+                </div>
+              )}
               <span className="text-xs font-bold text-[#ff9600] ml-2 flex-shrink-0">理解度 {agent.level}</span>
             </div>
             <div className="xp-bar">

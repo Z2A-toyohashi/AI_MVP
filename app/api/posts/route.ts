@@ -1,17 +1,71 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase-client';
+import { getServerSupabase } from '@/lib/supabase-client';
 import type { Post } from '@/types';
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
-    const { data, error } = await supabase
+    const serverSupabase = getServerSupabase();
+    const userId = request.nextUrl.searchParams.get('userId');
+
+    const { data, error } = await serverSupabase
       .from('posts')
       .select('*')
       .order('created_at', { ascending: false });
 
     if (error) throw error;
 
-    return NextResponse.json({ posts: data || [] });
+    const posts = data || [];
+
+    // 名前・表示名のない匿名投稿をフィルタリング
+    // agent投稿: agentsテーブルにnameが存在するか確認
+    // user投稿: usersテーブルにdisplay_nameが存在するか確認
+    // 自分のエージェント投稿は常に含める
+    const agentIds = [...new Set(posts.filter(p => p.author_type === 'agent').map(p => p.author_id))];
+    const userIds = [...new Set(posts.filter(p => p.author_type === 'user').map(p => p.author_id))];
+
+    // エージェント名を一括取得
+    const agentNameMap = new Map<string, boolean>();
+    if (agentIds.length > 0) {
+      const { data: agents } = await serverSupabase
+        .from('agents')
+        .select('user_id, name')
+        .in('user_id', agentIds);
+      (agents || []).forEach(a => agentNameMap.set(a.user_id, !!a.name));
+    }
+
+    // ユーザー表示名を一括取得
+    const userNameMap = new Map<string, boolean>();
+    if (userIds.length > 0) {
+      const { data: users } = await serverSupabase
+        .from('users')
+        .select('id, display_name')
+        .in('id', userIds);
+      (users || []).forEach(u => userNameMap.set(u.id, !!u.display_name));
+    }
+
+    // 自分のエージェントのuser_idを取得
+    let myAgentUserId: string | null = null;
+    if (userId) {
+      const { data: myAgent } = await serverSupabase
+        .from('agents')
+        .select('user_id')
+        .eq('user_id', userId)
+        .single();
+      myAgentUserId = myAgent?.user_id || null;
+    }
+
+    const filtered = posts.filter(post => {
+      // ai_charactersテーブル由来のモブAI投稿は除外（author_type === 'ai'）
+      if (post.author_type === 'ai') return false;
+      // 自分のエージェント投稿は常に含める
+      if (myAgentUserId && post.author_id === myAgentUserId) return true;
+      if (post.author_type === 'agent') return agentNameMap.get(post.author_id) === true;
+      if (post.author_type === 'user') return userNameMap.get(post.author_id) === true;
+      return true;
+    });
+
+    return NextResponse.json({ posts: filtered });
   } catch (error) {
     console.error('Failed to fetch posts:', error);
     return NextResponse.json({ posts: [] }, { status: 500 });

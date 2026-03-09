@@ -5,11 +5,18 @@ import { getServerSupabase } from '@/lib/supabase-client';
 export async function GET(request: NextRequest) {
   try {
     const supabase = getServerSupabase();
-    
-    const { data: agents, error } = await supabase
+    const minLevel = request.nextUrl.searchParams.get('minLevel');
+
+    let query = supabase
       .from('agents')
       .select('*')
-      .order('created_at', { ascending: false});
+      .order('created_at', { ascending: false });
+
+    if (minLevel) {
+      query = query.gte('level', parseInt(minLevel));
+    }
+
+    const { data: agents, error } = await query;
 
     if (error) throw error;
 
