@@ -21,7 +21,7 @@ interface HeaderProps {
   onAgentUpdate?: (updated: Agent) => void;
 }
 
-export default function Header({ agent, title = 'AI Living Lab', showBack = false, onAgentUpdate }: HeaderProps) {
+export default function Header({ agent, title = 'Symbio', showBack = false, onAgentUpdate }: HeaderProps) {
   const [menuOpen, setMenuOpen] = useState(false);
   const [editingName, setEditingName] = useState(false);
   const [nameInput, setNameInput] = useState('');
@@ -90,7 +90,7 @@ export default function Header({ agent, title = 'AI Living Lab', showBack = fals
             </svg>
           </button>
         ) : (
-          <span className="text-xl font-black text-[#58cc02] tracking-tight">AI Living Lab</span>
+          <span className="text-xl font-black text-[#58cc02] tracking-tight">Symbio</span>
         )}
 
         <h1 className="text-base font-black text-gray-800 absolute left-1/2 -translate-x-1/2">{title}</h1>
