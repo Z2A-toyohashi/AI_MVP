@@ -58,7 +58,6 @@ export default function BoardPage() {
   // 公園状態
   const [parkAgents, setParkAgents] = useState<ParkAgent[]>([]);
   const [convGroups, setConvGroups] = useState<ConvGroup[]>([]);
-  const [currentTurnIdx, setCurrentTurnIdx] = useState(0);
   // agentId → 現在表示中のメッセージ（別のキャラが話すまで残す）
   const [speakerMessages, setSpeakerMessages] = useState<Record<string, string>>({});
   const [generatingConv, setGeneratingConv] = useState(false);
@@ -71,6 +70,8 @@ export default function BoardPage() {
   const convTimerRef = useRef<NodeJS.Timeout | null>(null);
   const allTurnsRef = useRef<ConvTurn[]>([]);
   const turnIdxRef = useRef(0);
+  const parkAgentsRef = useRef<ParkAgent[]>([]);
+  const generatingConvRef = useRef(false);
 
   // ---- タイムライン ----
   useEffect(() => {
@@ -94,15 +95,14 @@ export default function BoardPage() {
 
   const stopParkSession = () => {
     if (parkTimerRef.current) clearInterval(parkTimerRef.current);
-    if (convTimerRef.current) clearInterval(convTimerRef.current);
+    if (convTimerRef.current) clearTimeout(convTimerRef.current);
   };
 
   const startParkSession = async () => {
-    await fetchParkAgents();
+    const agents = await fetchParkAgents();
+    parkAgentsRef.current = agents;
     // 最初の会話を生成
-    await triggerNewConversation();
-    // 120秒ごとに新しい会話を生成
-    parkTimerRef.current = setInterval(triggerNewConversation, 120000);
+    triggerNewConversationWithAgents(agents);
   };
 
   const fetchParkAgents = async () => {
@@ -123,13 +123,17 @@ export default function BoardPage() {
       // 投稿は非同期で後から取得（表示をブロックしない）
       fetch('/api/posts?limit=20').then(r => r.json()).then(postsData => {
         const allPosts: Post[] = postsData.posts || [];
-        setParkAgents(prev => prev.map(agent => ({
-          ...agent,
-          recentPosts: allPosts
-            .filter(p => p.author_id === agent.user_id && p.author_type === 'agent')
-            .sort((a, b) => b.created_at - a.created_at)
-            .slice(0, 5),
-        })));
+        setParkAgents(prev => {
+          const updated = prev.map(agent => ({
+            ...agent,
+            recentPosts: allPosts
+              .filter(p => p.author_id === agent.user_id && p.author_type === 'agent')
+              .sort((a, b) => b.created_at - a.created_at)
+              .slice(0, 5),
+          }));
+          parkAgentsRef.current = updated;
+          return updated;
+        });
       }).catch(() => {});
 
       return agents;
@@ -139,24 +143,18 @@ export default function BoardPage() {
     }
   };
 
-  const triggerNewConversation = useCallback(async () => {
-    if (generatingConv) return;
+  const triggerNewConversationWithAgents = async (agents: ParkAgent[]) => {
+    if (generatingConvRef.current) return;
+    if (agents.length < 2) return;
+    generatingConvRef.current = true;
     setGeneratingConv(true);
 
-    // 既にロード済みのエージェントを使う（再フェッチしない）
-    const agents = parkAgents;
-    if (agents.length < 2) {
-      setGeneratingConv(false);
-      return;
-    }
-
-    // 投稿は軽量に最新5件だけ取得
     let recentPosts: Post[] = [];
     try {
       const postsRes = await fetch('/api/posts?limit=5');
       const postsData = await postsRes.json();
       recentPosts = (postsData.posts || []).slice(0, 5);
-    } catch (_) { /* 投稿取得失敗は無視 */ }
+    } catch (_) {}
 
     try {
       const res = await fetch('/api/park/conversation', {
@@ -167,65 +165,62 @@ export default function BoardPage() {
       const data = await res.json();
       const groups: ConvGroup[] = data.groups || [];
 
-      if (groups.length === 0) {
-        setGeneratingConv(false);
-        return;
-      }
+      if (groups.length === 0) return;
 
       setConvGroups(groups);
-      setSpeakerMessages({}); // 新しい会話開始時にリセット
+      setSpeakerMessages({});
 
-      // グループごとにキャラを集合させる
       const newPositions: Record<string, { x: number; y: number }> = {};
       agents.forEach((a, i) => {
         newPositions[a.id] = BASE_POSITIONS[i % BASE_POSITIONS.length];
       });
-
       groups.forEach((group, gi) => {
         const center = GROUP_CLUSTER_CENTERS[gi % GROUP_CLUSTER_CENTERS.length];
         group.agentIds.forEach((id, ii) => {
           const angle = (ii / group.agentIds.length) * Math.PI * 2;
-          const radius = 8;
           newPositions[id] = {
-            x: center.x + Math.cos(angle) * radius,
-            y: center.y + Math.sin(angle) * radius * 0.6,
+            x: center.x + Math.cos(angle) * 8,
+            y: center.y + Math.sin(angle) * 5,
           };
         });
       });
-
       setAgentPositions(newPositions);
 
-      // 全ターンを結合して順番に表示
       const allTurns = groups.flatMap(g => g.turns);
       allTurnsRef.current = allTurns;
       turnIdxRef.current = 0;
-      setCurrentTurnIdx(0);
 
       if (allTurns.length > 0) {
-        showTurn(allTurns, 0);
+        showTurn(allTurns, 0, agents);
       }
     } catch (e) {
       console.error('triggerNewConversation error:', e);
     } finally {
+      generatingConvRef.current = false;
       setGeneratingConv(false);
     }
-  }, [generatingConv, parkAgents]);
+  };
 
-  const showTurn = (turns: ConvTurn[], idx: number) => {
+  const triggerNewConversation = useCallback(async () => {
+    triggerNewConversationWithAgents(parkAgentsRef.current);
+  }, []);
+
+  const showTurn = (turns: ConvTurn[], idx: number, agents?: ParkAgent[]) => {
     if (idx >= turns.length) {
-      // 会話終了 → 吹き出しを全クリア・散らばる
-      setSpeakerMessages({});
+      // 会話終了 → 10秒後に次の会話を自動生成
+      convTimerRef.current = setTimeout(() => {
+        setSpeakerMessages({});
+        triggerNewConversationWithAgents(agents || parkAgentsRef.current);
+      }, 10000);
       return;
     }
     const turn = turns[idx];
-    // 新しい発言者のメッセージを上書き（他のキャラの吹き出しはそのまま残る）
     setSpeakerMessages(prev => ({ ...prev, [turn.agentId]: turn.message }));
-    setCurrentTurnIdx(idx);
 
     if (convTimerRef.current) clearTimeout(convTimerRef.current);
     convTimerRef.current = setTimeout(() => {
-      showTurn(turns, idx + 1);
-    }, 4000);
+      showTurn(turns, idx + 1, agents);
+    }, 3000);
   };
 
   // ---- タイムライン共通 ----
