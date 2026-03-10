@@ -83,7 +83,12 @@ export async function GET(request: NextRequest) {
       .from('agent_dms')
       .select('*')
       .order('created_at', { ascending: false })
-      .limit(30);
+      .limit(50);
+
+    const userId = request.nextUrl.searchParams.get('userId');
+    if (userId) {
+      query = query.eq('user_id', userId);
+    }
 
     if (agentId) {
       query = query.or(`from_agent_id.eq.${agentId},to_agent_id.eq.${agentId}`);

@@ -122,14 +122,13 @@ export default function BoardPage() {
       // 自分のエージェントIDを取得してからDM一覧を取得
       const id = getUserId();
       fetch(`/api/agents?userId=${id}`).then(r => r.json()).then(agent => {
-        if (agent?.id) setMyAgentId(agent.id);
+        if (agent?.id) {
+          setMyAgentId(agent.id);
+          fetchDmAgents(id);
+        }
       }).catch(() => {});
       fetchDMs();
       setDmView('list');
-      // DMタブでもキャラ一覧が必要
-      if (parkAgents.length === 0) {
-        fetchParkAgents().then(agents => { parkAgentsRef.current = agents; });
-      }
     }
     return () => stopParkSession();
   }, [activeTab]);
@@ -345,7 +344,7 @@ export default function BoardPage() {
   const fetchDMs = async () => {
     setDmLoading(true);
     try {
-      const res = await fetch('/api/agent-dm');
+      const res = await fetch(`/api/agent-dm?userId=${userId}`);
       const data = await res.json();
       setDms(data.dms || []);
     } catch (e) {
