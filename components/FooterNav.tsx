@@ -7,6 +7,7 @@ import { getUserId } from '@/lib/user';
 export default function FooterNav() {
   const pathname = usePathname();
   const [unreadCount, setUnreadCount] = useState(0);
+  const [unreadDmCount, setUnreadDmCount] = useState(0);
 
   useEffect(() => {
     loadUnreadCount();
@@ -17,6 +18,7 @@ export default function FooterNav() {
   const loadUnreadCount = async () => {
     try {
       const userId = getUserId();
+      // 日記の未読
       const agentRes = await fetch(`/api/agents?userId=${userId}`);
       const agent = await agentRes.json();
       if (agent?.id) {
@@ -24,6 +26,10 @@ export default function FooterNav() {
         const data = await eventsRes.json();
         setUnreadCount(data.unreadCount || 0);
       }
+      // DM未読
+      const dmRes = await fetch('/api/agent-dm?unreadCount=true');
+      const dmData = await dmRes.json();
+      setUnreadDmCount(dmData.unreadCount || 0);
     } catch (e) {
       console.error(e);
     }
@@ -42,6 +48,7 @@ export default function FooterNav() {
     {
       href: '/board',
       label: '交流',
+      badge: unreadDmCount,
       icon: (active: boolean) => (
         <svg className="w-6 h-6" fill={active ? '#58cc02' : 'none'} stroke={active ? '#58cc02' : '#afafaf'} strokeWidth={2.5} viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
@@ -69,7 +76,7 @@ export default function FooterNav() {
     },
   ];
   return (
-    <nav className="fixed bottom-0 left-0 right-0 bg-white border-t-2 border-gray-100 z-50">
+    <nav className="fixed bottom-0 left-0 right-0 bg-white border-t-2 border-gray-100 z-50 h-16">
       <div className="max-w-lg mx-auto flex">
         {items.map((item) => {
           const active = pathname === item.href;

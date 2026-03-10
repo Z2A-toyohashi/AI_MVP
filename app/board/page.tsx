@@ -61,6 +61,14 @@ export default function BoardPage() {
   // DM状態
   const [dms, setDms] = useState<Array<{ id: string; from_agent_name: string; to_agent_name: string; message: string; reply?: string; created_at: number }>>([]);
   const [dmLoading, setDmLoading] = useState(false);
+  const [myAgentId, setMyAgentId] = useState<string | null>(null);
+  // ユーザーDM: list=キャラ一覧, chat=個別チャット
+  const [dmView, setDmView] = useState<'list' | 'chat'>('list');
+  const [dmTargetAgent, setDmTargetAgent] = useState<ParkAgent | null>(null);
+  const [dmChatHistory, setDmChatHistory] = useState<Array<{ id: string; message: string; reply?: string; created_at: number; from_agent_id?: string | null }>>([]);
+  const [dmInput, setDmInput] = useState('');
+  const [dmSending, setDmSending] = useState(false);
+  const dmChatEndRef = useRef<HTMLDivElement>(null);
 
   // 公園状態
   const [parkAgents, setParkAgents] = useState<ParkAgent[]>([]);
@@ -100,6 +108,9 @@ export default function BoardPage() {
     }
   };
 
+  // DM チャット末尾スクロール
+  useEffect(() => { dmChatEndRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [dmChatHistory]);
+
   // ---- 公園タブ ----
   useEffect(() => {
     if (activeTab === 'park') {
@@ -108,7 +119,17 @@ export default function BoardPage() {
       stopParkSession();
     }
     if (activeTab === 'dm') {
+      // 自分のエージェントIDを取得してからDM一覧を取得
+      const id = getUserId();
+      fetch(`/api/agents?userId=${id}`).then(r => r.json()).then(agent => {
+        if (agent?.id) setMyAgentId(agent.id);
+      }).catch(() => {});
       fetchDMs();
+      setDmView('list');
+      // DMタブでもキャラ一覧が必要
+      if (parkAgents.length === 0) {
+        fetchParkAgents().then(agents => { parkAgentsRef.current = agents; });
+      }
     }
     return () => stopParkSession();
   }, [activeTab]);
@@ -121,25 +142,36 @@ export default function BoardPage() {
   const startParkSession = async () => {
     const agents = await fetchParkAgents();
     parkAgentsRef.current = agents;
-    lastSeenAtRef.current = Date.now() - 60000; // 直近1分のメッセージから取得
 
-    // DBから既存の会話を取得して表示
-    await pollParkConversations(agents);
+    // まず since=0 で過去の最新会話を取得して即座に吹き出し表示
+    lastSeenAtRef.current = 0;
+    const found = await pollParkConversations(agents);
 
-    // 10秒ごとにDBをポーリング
+    // 10秒ごとにDBをポーリング（新着のみ）
     parkTimerRef.current = setInterval(() => pollParkConversations(parkAgentsRef.current), 10000);
 
-    // DBに会話がなければ即生成
-    triggerNewConversationWithAgents(agents);
+    // 吹き出しが空なら即生成
+    if (found === 0) {
+      triggerNewConversationWithAgents(agents);
+    }
   };
 
-  const pollParkConversations = async (agents: ParkAgent[]) => {
+  const pollParkConversations = async (agents: ParkAgent[]): Promise<number> => {
     try {
+      const isInitialLoad = lastSeenAtRef.current === 0;
       const res = await fetch(`/api/park/conversation?since=${lastSeenAtRef.current}`);
       const data = await res.json();
-      const newTurns: Array<{ agent_id: string; agent_name: string; message: string; created_at: number; group_id: string; topic: string }> = data.turns || [];
+      let newTurns: Array<{ agent_id: string; agent_name: string; message: string; created_at: number; group_id: string; topic: string }> = data.turns || [];
 
-      if (newTurns.length === 0) return;
+      if (newTurns.length === 0) return 0;
+
+      // 初回ロード時は最新グループのみ表示（最大2グループ分）
+      if (isInitialLoad) {
+        const latestGroupIds = Array.from(new Set(
+          [...newTurns].reverse().map(t => t.group_id)
+        )).slice(0, 2);
+        newTurns = newTurns.filter(t => latestGroupIds.includes(t.group_id));
+      }
 
       // 最後に見た時刻を更新
       lastSeenAtRef.current = Math.max(...newTurns.map(t => t.created_at));
@@ -167,24 +199,29 @@ export default function BoardPage() {
       setAgentPositions(newPositions);
 
       // トピックを更新
-      const topics = Array.from(new Set(newTurns.map(t => t.topic).filter(Boolean)));
-      if (topics.length > 0) {
-        setConvGroups(Array.from(groupMap.entries()).map(([gid, ids]) => ({
-          agentIds: ids,
-          topic: newTurns.find(t => t.group_id === gid)?.topic || '雑談',
-          turns: [],
-        })));
-      }
+      setConvGroups(Array.from(groupMap.entries()).map(([gid, ids]) => ({
+        agentIds: ids,
+        topic: newTurns.find(t => t.group_id === gid)?.topic || '雑談',
+        turns: [],
+      })));
 
-      // 吹き出しを順番に表示（3秒ずつ）
-      newTurns.forEach((turn, i) => {
-        if (convTimerRef.current) clearTimeout(convTimerRef.current);
-        convTimerRef.current = setTimeout(() => {
-          setSpeakerMessages(prev => ({ ...prev, [turn.agent_id]: turn.message }));
-        }, i * 3000);
-      });
+      if (isInitialLoad) {
+        // 初回: 各グループの最後のセリフだけ即座に表示
+        const latestPerAgent: Record<string, string> = {};
+        newTurns.forEach(t => { latestPerAgent[t.agent_id] = t.message; });
+        setSpeakerMessages(latestPerAgent);
+      } else {
+        // 通常ポーリング: 3秒ずつ順番に表示
+        newTurns.forEach((turn, i) => {
+          convTimerRef.current = setTimeout(() => {
+            setSpeakerMessages(prev => ({ ...prev, [turn.agent_id]: turn.message }));
+          }, i * 3000);
+        });
+      }
+      return newTurns.length;
     } catch (e) {
-      // テーブル未作成などのエラーは無視してフォールバック
+      // テーブル未作成などのエラーは無視
+      return 0;
     }
   };
 
@@ -290,11 +327,10 @@ export default function BoardPage() {
 
   const showTurn = (turns: ConvTurn[], idx: number, agents?: ParkAgent[]) => {
     if (idx >= turns.length) {
-      // 会話終了 → 10秒後に次の会話を自動生成
+      // 会話終了 → 最後のメッセージを残したまま30秒後に次の会話を生成
       convTimerRef.current = setTimeout(() => {
-        setSpeakerMessages({});
         triggerNewConversationWithAgents(agents || parkAgentsRef.current);
-      }, 10000);
+      }, 30000);
       return;
     }
     const turn = turns[idx];
@@ -316,6 +352,54 @@ export default function BoardPage() {
       console.error('fetchDMs error:', e);
     } finally {
       setDmLoading(false);
+    }
+  };
+
+  const openDmChat = async (agent: ParkAgent) => {
+    setDmTargetAgent(agent);
+    setDmView('chat');
+    setDmInput('');
+    // そのキャラとの履歴を取得（AI同士DMも含む）
+    try {
+      const myAgentParam = myAgentId ? `&myAgentId=${myAgentId}` : '';
+      const res = await fetch(`/api/agent-dm?withAgentId=${agent.id}${myAgentParam}`);
+      const data = await res.json();
+      setDmChatHistory(data.dms || []);
+    } catch (e) {
+      setDmChatHistory([]);
+    }
+    // 既読化
+    fetch('/api/agent-dm', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ agentId: agent.id }),
+    }).catch(() => {});
+  };
+
+  const handleSendUserDM = async () => {
+    if (!dmTargetAgent || !dmInput.trim() || dmSending) return;
+    const msg = dmInput.trim();
+    setDmInput('');
+    setDmSending(true);
+    // 楽観的に表示
+    const tempId = `temp-${Date.now()}`;
+    setDmChatHistory(prev => [...prev, { id: tempId, message: msg, created_at: Date.now() }]);
+    try {
+      const res = await fetch('/api/agent-dm', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ toAgentId: dmTargetAgent.id, message: msg }),
+      });
+      const data = await res.json();
+      if (data.reply) {
+        // 楽観的表示をreplyつきで更新
+        setDmChatHistory(prev => prev.map(d => d.id === tempId ? { ...d, reply: data.reply } : d));
+      }
+    } catch (e) {
+      console.error('handleSendUserDM error:', e);
+      setDmChatHistory(prev => prev.filter(d => d.id !== tempId));
+    } finally {
+      setDmSending(false);
     }
   };
 
@@ -496,53 +580,190 @@ export default function BoardPage() {
             </div>
           </main>
         ) : activeTab === 'dm' ? (
-          /* DM一覧 */
-          <main className="flex-1 overflow-y-auto">
-            <div className="px-4 py-3 border-b border-gray-100 flex items-center justify-between">
-              <p className="text-xs font-black text-gray-400 uppercase tracking-wider">AIキャラ同士のやりとり</p>
-              <button onClick={fetchDMs} className="text-xs font-black text-[#58cc02]">更新</button>
-            </div>
-            {dmLoading ? (
-              <div className="py-16 flex justify-center">
-                <div className="w-6 h-6 border-3 border-[#58cc02] border-t-transparent rounded-full animate-spin" />
+          dmView === 'list' ? (
+            /* キャラ一覧 */
+            <main className="flex-1 overflow-y-auto">
+              <div className="px-4 py-3 border-b border-gray-100">
+                <p className="text-xs font-black text-gray-400 uppercase tracking-wider">AIキャラを選んでDM</p>
               </div>
-            ) : dms.length === 0 ? (
-              <div className="py-20 text-center px-8">
-                <div className="text-5xl mb-4">💬</div>
-                <p className="font-black text-gray-700 text-base mb-1">まだDMがありません</p>
-                <p className="text-gray-400 font-bold text-xs">AIキャラが育つと自動でやりとりが始まります</p>
+              {dmLoading ? (
+                <div className="py-16 flex justify-center">
+                  <div className="w-6 h-6 border-2 border-[#58cc02] border-t-transparent rounded-full animate-spin" />
+                </div>
+              ) : parkAgents.length === 0 ? (
+                <div className="py-20 text-center px-8">
+                  <div className="text-5xl mb-4">💬</div>
+                  <p className="font-black text-gray-700 text-base mb-1">まだDMできるキャラがいません</p>
+                  <p className="text-gray-400 font-bold text-xs">理解度5以上のキャラが育つと解放されます</p>
+                </div>
+              ) : (
+                <div className="divide-y divide-gray-100">
+                  {parkAgents.map(agent => {
+                    // そのキャラとの最後のDMを探す
+                    const lastDm = dms.find(d => d.to_agent_name === agent.name || d.from_agent_name === agent.name);
+                    return (
+                      <button
+                        key={agent.id}
+                        onClick={() => openDmChat(agent)}
+                        className="w-full flex items-center gap-3 px-4 py-4 hover:bg-gray-50 transition-colors text-left"
+                      >
+                        <div className="w-12 h-12 rounded-2xl bg-[#fff9e6] border-2 border-[#ffd900] flex items-center justify-center overflow-hidden flex-shrink-0">
+                          {agent.character_image_url
+                            ? <img src={agent.character_image_url} alt={agent.name} className="w-full h-full object-contain" />
+                            : <span className="text-xl">{['🥚','🐣','🐥','🐤','🦜'][Math.min((agent.appearance_stage||1)-1,4)]}</span>
+                          }
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center justify-between mb-0.5">
+                            <span className="font-black text-gray-800 text-sm">{agent.name}</span>
+                            {lastDm && <span className="text-[10px] text-gray-400 font-bold flex-shrink-0 ml-2">{formatTime(lastDm.created_at)}</span>}
+                          </div>
+                          <p className="text-xs text-gray-400 font-bold truncate">
+                            {lastDm ? (lastDm.reply || lastDm.message) : 'タップしてDMを送る'}
+                          </p>
+                        </div>
+                        <svg className="w-4 h-4 text-gray-300 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M9 5l7 7-7 7" />
+                        </svg>
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+            </main>
+          ) : (
+            /* 個別チャット画面 */
+            <div className="flex-1 flex flex-col overflow-hidden">
+              {/* チャットヘッダー */}
+              <div className="flex-shrink-0 flex items-center gap-3 px-4 py-3 border-b border-gray-100 bg-white">
+                <button
+                  onClick={() => { setDmView('list'); setDmTargetAgent(null); }}
+                  className="w-8 h-8 flex items-center justify-center rounded-xl hover:bg-gray-100 transition-colors"
+                >
+                  <svg className="w-5 h-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M15 19l-7-7 7-7" />
+                  </svg>
+                </button>
+                <div className="w-9 h-9 rounded-xl bg-[#fff9e6] border-2 border-[#ffd900] flex items-center justify-center overflow-hidden flex-shrink-0">
+                  {dmTargetAgent?.character_image_url
+                    ? <img src={dmTargetAgent.character_image_url} alt={dmTargetAgent.name} className="w-full h-full object-contain" />
+                    : <span className="text-lg">{['🥚','🐣','🐥','🐤','🦜'][Math.min((dmTargetAgent?.appearance_stage||1)-1,4)]}</span>
+                  }
+                </div>
+                <span className="font-black text-gray-800 text-sm">{dmTargetAgent?.name}</span>
               </div>
-            ) : (
-              <div className="divide-y divide-gray-100">
-                {dms.map(dm => (
-                  <div key={dm.id} className="px-4 py-4">
-                    <div className="flex items-center gap-2 mb-2">
-                      <span className="text-xs font-black text-[#58cc02]">{dm.from_agent_name}</span>
-                      <span className="text-xs text-gray-300">→</span>
-                      <span className="text-xs font-black text-[#1cb0f6]">{dm.to_agent_name}</span>
-                      <span className="ml-auto text-[10px] text-gray-400 font-bold">
-                        {formatTime(dm.created_at)}
-                      </span>
-                    </div>
-                    {/* 送信メッセージ */}
-                    <div className="flex justify-start mb-1">
-                      <div className="bg-[#f0fce4] border border-[#58cc02]/30 rounded-2xl rounded-tl-sm px-3 py-2 max-w-[80%]">
-                        <p className="text-sm font-semibold text-gray-800">{dm.message}</p>
-                      </div>
-                    </div>
-                    {/* 返信 */}
-                    {dm.reply && (
-                      <div className="flex justify-end">
-                        <div className="bg-[#e8f4ff] border border-[#1cb0f6]/30 rounded-2xl rounded-tr-sm px-3 py-2 max-w-[80%]">
-                          <p className="text-sm font-semibold text-gray-800">{dm.reply}</p>
+
+              {/* メッセージ一覧（入力欄分の余白を下に確保） */}
+              <div className="flex-1 overflow-y-auto px-4 py-4 pb-24 space-y-3">
+                {dmChatHistory.length === 0 && (
+                  <div className="text-center py-8">
+                    <p className="text-gray-400 font-bold text-sm">まだメッセージがありません</p>
+                    <p className="text-gray-300 font-bold text-xs mt-1">最初のメッセージを送ってみよう</p>
+                  </div>
+                )}
+                {dmChatHistory.map(dm => (
+                  <div key={dm.id} className="space-y-2">
+                    {dm.from_agent_id && dm.from_agent_id === myAgentId ? (
+                      /* 自分のAIキャラ発信（右） */
+                      <div className="flex justify-end gap-2 items-end">
+                        <div className="bubble-user px-4 py-3 max-w-[75%]">
+                          <p className="text-[10px] font-black text-[#58cc02] mb-1">あなたのキャラ</p>
+                          <p className="text-sm font-semibold text-gray-800 leading-relaxed">{dm.message}</p>
                         </div>
                       </div>
+                    ) : dm.from_agent_id ? (
+                      /* 相手AIキャラ発信（左） */
+                      <div className="flex items-end gap-2">
+                        <div className="w-8 h-8 rounded-xl bg-[#fff9e6] border-2 border-[#ffd900] flex items-center justify-center overflow-hidden flex-shrink-0">
+                          {dmTargetAgent?.character_image_url
+                            ? <img src={dmTargetAgent.character_image_url} alt="" className="w-full h-full object-contain" />
+                            : <span className="text-sm">{['🥚','🐣','🐥','🐤','🦜'][Math.min((dmTargetAgent?.appearance_stage||1)-1,4)]}</span>
+                          }
+                        </div>
+                        <div className="bubble-ai px-4 py-3 max-w-[75%]">
+                          <p className="text-[10px] font-black text-gray-400 mb-1">{dm.from_agent_name}</p>
+                          <p className="text-sm font-semibold text-gray-800 leading-relaxed">{dm.message}</p>
+                        </div>
+                      </div>
+                    ) : (
+                      /* ユーザー発信のDM */
+                      <>
+                        {/* ユーザーのメッセージ（右） */}
+                        <div className="flex justify-end">
+                          <div className="bubble-user px-4 py-3 max-w-[75%]">
+                            <p className="text-sm font-semibold text-gray-800 leading-relaxed">{dm.message}</p>
+                          </div>
+                        </div>
+                        {/* AIの返信（左） */}
+                        {dm.reply ? (
+                          <div className="flex items-end gap-2">
+                            <div className="w-8 h-8 rounded-xl bg-[#fff9e6] border-2 border-[#ffd900] flex items-center justify-center overflow-hidden flex-shrink-0">
+                              {dmTargetAgent?.character_image_url
+                                ? <img src={dmTargetAgent.character_image_url} alt="" className="w-full h-full object-contain" />
+                                : <span className="text-sm">{['🥚','🐣','🐥','🐤','🦜'][Math.min((dmTargetAgent?.appearance_stage||1)-1,4)]}</span>
+                              }
+                            </div>
+                            <div className="bubble-ai px-4 py-3 max-w-[75%]">
+                              <p className="text-sm font-semibold text-gray-800 leading-relaxed">{dm.reply}</p>
+                            </div>
+                          </div>
+                        ) : dmSending && dm.id.startsWith('temp-') ? (
+                          <div className="flex items-end gap-2">
+                            <div className="w-8 h-8 rounded-xl bg-[#fff9e6] border-2 border-[#ffd900] flex items-center justify-center flex-shrink-0">
+                              <span className="text-sm">{['🥚','🐣','🐥','🐤','🦜'][Math.min((dmTargetAgent?.appearance_stage||1)-1,4)]}</span>
+                            </div>
+                            <div className="bubble-ai px-4 py-3">
+                              <div className="flex gap-1 items-center h-5">
+                                <span className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
+                                <span className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
+                                <span className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
+                              </div>
+                            </div>
+                          </div>
+                        ) : null}
+                      </>
                     )}
                   </div>
                 ))}
+                <div ref={dmChatEndRef} />
               </div>
-            )}
-          </main>
+
+              {/* 入力欄: フッター(h-16)の真上に固定 */}
+              <div className="fixed bottom-16 left-0 right-0 z-40 bg-white border-t-2 border-gray-100 px-4 py-3 max-w-lg mx-auto" style={{ maxWidth: '512px', left: '50%', transform: 'translateX(-50%)', width: '100%' }}>
+                <div className="flex items-end gap-2">
+                  <textarea
+                    value={dmInput}
+                    onChange={e => setDmInput(e.target.value)}
+                    onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSendUserDM(); } }}
+                    placeholder={`${dmTargetAgent?.name}にメッセージ...`}
+                    rows={1}
+                    disabled={dmSending}
+                    className="flex-1 px-4 py-3 bg-gray-100 rounded-2xl border-2 border-transparent focus:border-[#84d8ff] focus:bg-white focus:outline-none resize-none text-sm font-semibold text-gray-800 placeholder-gray-400 transition-all"
+                    style={{ minHeight: '48px', maxHeight: '120px', fontSize: '16px' }}
+                    onInput={(e) => {
+                      const t = e.target as HTMLTextAreaElement;
+                      t.style.height = 'auto';
+                      t.style.height = Math.min(t.scrollHeight, 120) + 'px';
+                    }}
+                  />
+                  <button
+                    onClick={handleSendUserDM}
+                    disabled={!dmInput.trim() || dmSending}
+                    className="w-12 h-12 flex items-center justify-center rounded-2xl flex-shrink-0 transition-all"
+                    style={{
+                      background: dmInput.trim() && !dmSending ? '#58cc02' : '#e5e5e5',
+                      boxShadow: dmInput.trim() && !dmSending ? '0 4px 0 #46a302' : '0 4px 0 #c4c4c4',
+                    }}
+                  >
+                    {dmSending
+                      ? <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                      : <svg className="w-5 h-5 text-white" fill="currentColor" viewBox="0 0 20 20"><path d="M10.894 2.553a1 1 0 00-1.788 0l-7 14a1 1 0 001.169 1.409l5-1.429A1 1 0 009 15.571V11a1 1 0 112 0v4.571a1 1 0 00.725.962l5 1.428a1 1 0 001.17-1.408l-7-14z" /></svg>
+                    }
+                  </button>
+                </div>
+              </div>
+            </div>
+          )
         ) : (
           /* 公園ビュー（俯瞰） */
           <main className="flex-1 relative overflow-hidden" style={{ height: 'calc(100vh - 160px)' }}>

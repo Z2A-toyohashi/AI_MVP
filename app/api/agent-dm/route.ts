@@ -4,11 +4,73 @@ import OpenAI from 'openai';
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
-// DM一覧取得
+// DM一覧取得 / 未読カウント
 export async function GET(request: NextRequest) {
   try {
     const supabase = getServerSupabase();
     const agentId = request.nextUrl.searchParams.get('agentId');
+    const withAgentId = request.nextUrl.searchParams.get('withAgentId');
+    const unreadCount = request.nextUrl.searchParams.get('unreadCount');
+
+    // 未読カウントのみ返す（AIキャラ→ユーザー宛の未読）
+    if (unreadCount === 'true') {
+      // マイグレーション済みの場合はis_readで、未済の場合は件数0を返す
+      try {
+        const { count, error } = await supabase
+          .from('agent_dms')
+          .select('*', { count: 'exact', head: true })
+          .eq('to_agent_name', 'あなた')
+          .neq('from_agent_name', 'あなた')
+          .eq('is_read', false);
+        if (error) return NextResponse.json({ unreadCount: 0 });
+        return NextResponse.json({ unreadCount: count || 0 });
+      } catch {
+        return NextResponse.json({ unreadCount: 0 });
+      }
+    }
+
+    if (withAgentId) {
+      const myAgentId = request.nextUrl.searchParams.get('myAgentId');
+
+      // ユーザー→そのキャラ（from_agent_name='あなた', to_agent_id=withAgentId）
+      const { data: userSent } = await supabase
+        .from('agent_dms')
+        .select('*')
+        .eq('to_agent_id', withAgentId)
+        .eq('from_agent_name', 'あなた')
+        .order('created_at', { ascending: true })
+        .limit(30);
+
+      // そのキャラ→ユーザー（from_agent_id=withAgentId, to_agent_name='あなた'）
+      const { data: agentSent } = await supabase
+        .from('agent_dms')
+        .select('*')
+        .eq('from_agent_id', withAgentId)
+        .eq('to_agent_name', 'あなた')
+        .order('created_at', { ascending: true })
+        .limit(30);
+
+      const all = [...(userSent || []), ...(agentSent || [])];
+
+      // 自分のキャラIDがあればAI同士DMも取得
+      if (myAgentId) {
+        const { data: aiDms } = await supabase
+          .from('agent_dms')
+          .select('*')
+          .or(`and(from_agent_id.eq.${myAgentId},to_agent_id.eq.${withAgentId}),and(from_agent_id.eq.${withAgentId},to_agent_id.eq.${myAgentId})`)
+          .order('created_at', { ascending: true })
+          .limit(30);
+        all.push(...(aiDms || []));
+      }
+
+      // 重複除去してcreated_at順にソート
+      const seen = new Set<string>();
+      const deduped = all
+        .filter(d => { if (seen.has(d.id)) return false; seen.add(d.id); return true; })
+        .sort((a, b) => a.created_at - b.created_at);
+
+      return NextResponse.json({ dms: deduped });
+    }
 
     let query = supabase
       .from('agent_dms')
@@ -111,4 +173,90 @@ function getTraits(personality: any): string {
   if ((p.curious || 0) > 3) traits.push('好奇心旺盛');
   if ((p.creative || 0) > 3) traits.push('クリエイティブ');
   return traits.join('・') || '普通';
+}
+
+// ユーザー → AIキャラへのDM送信
+export async function PUT(request: NextRequest) {
+  try {
+    const { toAgentId, message } = await request.json();
+    if (!toAgentId || !message) {
+      return NextResponse.json({ error: 'toAgentId and message required' }, { status: 400 });
+    }
+
+    const supabase = getServerSupabase();
+
+    // 宛先エージェント情報を取得
+    const { data: agent, error } = await supabase
+      .from('agents')
+      .select('id, name, personality, level')
+      .eq('id', toAgentId)
+      .single();
+
+    if (error || !agent) {
+      return NextResponse.json({ error: 'Agent not found' }, { status: 404 });
+    }
+
+    const traits = getTraits(agent.personality);
+
+    // AIキャラの返信を生成
+    const completion = await openai.chat.completions.create({
+      model: 'gpt-4o-mini',
+      messages: [
+        {
+          role: 'system',
+          content: `あなたは「${agent.name}」（${traits}）。ユーザーからDMが届いた。1〜2文で自然に返信してください。絵文字なし。`,
+        },
+        { role: 'user', content: message },
+      ],
+      temperature: 1.0,
+      max_tokens: 100,
+    });
+
+    const reply = completion.choices[0]?.message?.content || 'うん、なるほど。';
+
+    // DBに保存
+    const now = Date.now();
+    const insertData: Record<string, unknown> = {
+      from_agent_id: null,
+      to_agent_id: agent.id,
+      from_agent_name: 'あなた',
+      to_agent_name: agent.name,
+      message,
+      reply,
+      created_at: now,
+    };
+    // is_readカラムが存在する場合のみセット（マイグレーション済みの場合）
+    try {
+      const { data: saved } = await supabase.from('agent_dms').insert({ ...insertData, is_read: true }).select().single();
+      return NextResponse.json({ success: true, reply, agentName: agent.name, id: saved?.id });
+    } catch {
+      // is_readカラムがない場合はなしで保存
+      const { data: saved } = await supabase.from('agent_dms').insert(insertData).select().single();
+      return NextResponse.json({ success: true, reply, agentName: agent.name, id: saved?.id });
+    }
+  } catch (e) {
+    console.error('agent-dm PUT error:', e);
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+  }
+}
+
+// 既読化（チャット画面を開いたとき）
+export async function PATCH(request: NextRequest) {
+  try {
+    const { agentId } = await request.json();
+    if (!agentId) return NextResponse.json({ error: 'agentId required' }, { status: 400 });
+
+    const supabase = getServerSupabase();
+    // AIキャラ→ユーザー宛の未読を既読化（is_readカラムがある場合のみ）
+    await supabase
+      .from('agent_dms')
+      .update({ is_read: true })
+      .eq('from_agent_id', agentId)
+      .eq('to_agent_name', 'あなた')
+      .eq('is_read', false);
+
+    return NextResponse.json({ success: true });
+  } catch (e) {
+    return NextResponse.json({ success: true }); // エラーでも200を返す
+  }
 }
