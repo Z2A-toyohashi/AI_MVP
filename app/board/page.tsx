@@ -65,7 +65,7 @@ export default function BoardPage() {
   // ユーザーDM: list=キャラ一覧, chat=個別チャット
   const [dmView, setDmView] = useState<'list' | 'chat'>('list');
   const [dmTargetAgent, setDmTargetAgent] = useState<ParkAgent | null>(null);
-  const [dmChatHistory, setDmChatHistory] = useState<Array<{ id: string; message: string; reply?: string; created_at: number; from_agent_id?: string | null }>>([]);
+  const [dmChatHistory, setDmChatHistory] = useState<Array<{ id: string; message: string; reply?: string; created_at: number; from_agent_id?: string | null; from_agent_name?: string }>>([]);
   const [dmInput, setDmInput] = useState('');
   const [dmSending, setDmSending] = useState(false);
   const dmChatEndRef = useRef<HTMLDivElement>(null);

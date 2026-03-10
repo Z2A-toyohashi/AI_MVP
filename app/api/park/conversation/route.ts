@@ -72,7 +72,7 @@ export async function POST(request: NextRequest) {
 
     // 24時間以上前のデータを削除
     const cutoff = Date.now() - 24 * 60 * 60 * 1000;
-    await supabase.from('park_conversations').delete().lt('created_at', cutoff).catch(() => {});
+    try { await supabase.from('park_conversations').delete().lt('created_at', cutoff); } catch (_) {}
 
     return NextResponse.json({ groups });
   } catch (error) {
