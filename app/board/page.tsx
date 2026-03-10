@@ -362,7 +362,7 @@ export default function BoardPage() {
     // そのキャラとの履歴を取得（AI同士DMも含む）
     try {
       const myAgentParam = myAgentId ? `&myAgentId=${myAgentId}` : '';
-      const res = await fetch(`/api/agent-dm?withAgentId=${agent.id}${myAgentParam}`);
+      const res = await fetch(`/api/agent-dm?withAgentId=${agent.id}&userId=${userId}${myAgentParam}`);
       const data = await res.json();
       setDmChatHistory(data.dms || []);
     } catch (e) {
@@ -372,7 +372,7 @@ export default function BoardPage() {
     fetch('/api/agent-dm', {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ agentId: agent.id }),
+      body: JSON.stringify({ agentId: agent.id, userId }),
     }).catch(() => {});
   };
 
@@ -388,7 +388,7 @@ export default function BoardPage() {
       const res = await fetch('/api/agent-dm', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ toAgentId: dmTargetAgent.id, message: msg }),
+        body: JSON.stringify({ toAgentId: dmTargetAgent.id, message: msg, userId }),
       });
       const data = await res.json();
       if (data.reply) {

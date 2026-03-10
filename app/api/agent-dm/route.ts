@@ -14,11 +14,13 @@ export async function GET(request: NextRequest) {
 
     // 未読カウントのみ返す（AIキャラ→ユーザー宛の未読）
     if (unreadCount === 'true') {
-      // マイグレーション済みの場合はis_readで、未済の場合は件数0を返す
+      const userId = request.nextUrl.searchParams.get('userId');
+      if (!userId) return NextResponse.json({ unreadCount: 0 });
       try {
         const { count, error } = await supabase
           .from('agent_dms')
           .select('*', { count: 'exact', head: true })
+          .eq('user_id', userId)
           .eq('to_agent_name', 'あなた')
           .neq('from_agent_name', 'あなた')
           .eq('is_read', false);
@@ -31,35 +33,40 @@ export async function GET(request: NextRequest) {
 
     if (withAgentId) {
       const myAgentId = request.nextUrl.searchParams.get('myAgentId');
+      const userId = request.nextUrl.searchParams.get('userId');
+      if (!userId) return NextResponse.json({ dms: [] });
 
-      // ユーザー→そのキャラ（from_agent_name='あなた', to_agent_id=withAgentId）
+      // ユーザー→そのキャラ（user_id一致 + to_agent_id=withAgentId）
       const { data: userSent } = await supabase
         .from('agent_dms')
         .select('*')
+        .eq('user_id', userId)
         .eq('to_agent_id', withAgentId)
         .eq('from_agent_name', 'あなた')
         .order('created_at', { ascending: true })
-        .limit(30);
+        .limit(50);
 
-      // そのキャラ→ユーザー（from_agent_id=withAgentId, to_agent_name='あなた'）
+      // そのキャラ→ユーザー（user_id一致 + from_agent_id=withAgentId）
       const { data: agentSent } = await supabase
         .from('agent_dms')
         .select('*')
+        .eq('user_id', userId)
         .eq('from_agent_id', withAgentId)
         .eq('to_agent_name', 'あなた')
         .order('created_at', { ascending: true })
-        .limit(30);
+        .limit(50);
 
       const all = [...(userSent || []), ...(agentSent || [])];
 
-      // 自分のキャラIDがあればAI同士DMも取得
+      // 自分のキャラIDがあればAI同士DMも取得（user_id紐付き）
       if (myAgentId) {
         const { data: aiDms } = await supabase
           .from('agent_dms')
           .select('*')
+          .eq('user_id', userId)
           .or(`and(from_agent_id.eq.${myAgentId},to_agent_id.eq.${withAgentId}),and(from_agent_id.eq.${withAgentId},to_agent_id.eq.${myAgentId})`)
           .order('created_at', { ascending: true })
-          .limit(30);
+          .limit(50);
         all.push(...(aiDms || []));
       }
 
@@ -178,9 +185,9 @@ function getTraits(personality: any): string {
 // ユーザー → AIキャラへのDM送信
 export async function PUT(request: NextRequest) {
   try {
-    const { toAgentId, message } = await request.json();
-    if (!toAgentId || !message) {
-      return NextResponse.json({ error: 'toAgentId and message required' }, { status: 400 });
+    const { toAgentId, message, userId } = await request.json();
+    if (!toAgentId || !message || !userId) {
+      return NextResponse.json({ error: 'toAgentId, message and userId required' }, { status: 400 });
     }
 
     const supabase = getServerSupabase();
@@ -217,6 +224,7 @@ export async function PUT(request: NextRequest) {
     // DBに保存
     const now = Date.now();
     const insertData: Record<string, unknown> = {
+      user_id: userId,
       from_agent_id: null,
       to_agent_id: agent.id,
       from_agent_name: 'あなた',
@@ -243,20 +251,20 @@ export async function PUT(request: NextRequest) {
 // 既読化（チャット画面を開いたとき）
 export async function PATCH(request: NextRequest) {
   try {
-    const { agentId } = await request.json();
-    if (!agentId) return NextResponse.json({ error: 'agentId required' }, { status: 400 });
+    const { agentId, userId } = await request.json();
+    if (!agentId || !userId) return NextResponse.json({ error: 'agentId and userId required' }, { status: 400 });
 
     const supabase = getServerSupabase();
-    // AIキャラ→ユーザー宛の未読を既読化（is_readカラムがある場合のみ）
     await supabase
       .from('agent_dms')
       .update({ is_read: true })
+      .eq('user_id', userId)
       .eq('from_agent_id', agentId)
       .eq('to_agent_name', 'あなた')
       .eq('is_read', false);
 
     return NextResponse.json({ success: true });
   } catch (e) {
-    return NextResponse.json({ success: true }); // エラーでも200を返す
+    return NextResponse.json({ success: true });
   }
 }

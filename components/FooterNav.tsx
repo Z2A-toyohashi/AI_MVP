@@ -27,7 +27,7 @@ export default function FooterNav() {
         setUnreadCount(data.unreadCount || 0);
       }
       // DM未読
-      const dmRes = await fetch('/api/agent-dm?unreadCount=true');
+      const dmRes = await fetch(`/api/agent-dm?unreadCount=true&userId=${userId}`);
       const dmData = await dmRes.json();
       setUnreadDmCount(dmData.unreadCount || 0);
     } catch (e) {
