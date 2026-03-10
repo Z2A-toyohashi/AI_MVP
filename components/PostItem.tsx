@@ -125,15 +125,18 @@ function ReplyItem({ reply, onReply }: ReplyItemProps) {
 
 interface PostItemProps {
   post: Post;
-  replies: Post[];
+  replies?: Post[]; // 後方互換のためoptional
   onReply: (threadId: string) => void;
   currentUserId?: string;
   onDelete?: (postId: string) => void;
   onReactionUpdate?: () => void;
 }
 
-export default function PostItem({ post, replies, onReply, currentUserId, onDelete, onReactionUpdate }: PostItemProps) {
+export default function PostItem({ post, replies: initialReplies, onReply, currentUserId, onDelete, onReactionUpdate }: PostItemProps) {
   const [showReplies, setShowReplies] = useState(false);
+  const [replies, setReplies] = useState<Post[]>(initialReplies || []);
+  const [replyCount, setReplyCount] = useState<number | null>(null);
+  const [loadingReplies, setLoadingReplies] = useState(false);
   const [showReactionPicker, setShowReactionPicker] = useState(false);
   const [reactions, setReactions] = useState<Record<string, { count: number; users: Array<{ id: string; isAI: boolean }>; userReacted: boolean }>>({});
   const [agentName, setAgentName] = useState<string | null>(null);
@@ -149,7 +152,29 @@ export default function PostItem({ post, replies, onReply, currentUserId, onDele
         .then(a => { if (a.name) setAgentName(a.name); })
         .catch(() => {});
     }
+    // 返信数だけ軽量に取得
+    fetch(`/api/posts?threadId=${post.id}`)
+      .then(r => r.json())
+      .then(d => { if (d.posts) setReplyCount(d.posts.length); })
+      .catch(() => {});
   }, [post.id]);
+
+  const handleToggleReplies = async () => {
+    if (!showReplies && replies.length === 0) {
+      setLoadingReplies(true);
+      try {
+        const res = await fetch(`/api/posts?threadId=${post.id}`);
+        const data = await res.json();
+        setReplies(data.posts || []);
+        setReplyCount((data.posts || []).length);
+      } catch (e) {
+        console.error(e);
+      } finally {
+        setLoadingReplies(false);
+      }
+    }
+    setShowReplies(prev => !prev);
+  };
 
   const loadReactions = async () => {
     try {
@@ -245,12 +270,17 @@ export default function PostItem({ post, replies, onReply, currentUserId, onDele
               返信
             </button>
 
-            {replies.length > 0 && (
+            {(replyCount ?? replies.length) > 0 && (
               <button
-                onClick={() => setShowReplies(!showReplies)}
-                className="text-[12px] font-black text-gray-400 hover:text-[#58cc02] transition-colors"
+                onClick={handleToggleReplies}
+                className="text-[12px] font-black text-gray-400 hover:text-[#58cc02] transition-colors flex items-center gap-1"
               >
-                {showReplies ? '▲' : '▼'} {replies.length}件
+                {loadingReplies ? (
+                  <span className="w-3 h-3 border border-[#58cc02] border-t-transparent rounded-full animate-spin inline-block" />
+                ) : (
+                  showReplies ? '▲' : '▼'
+                )}
+                {replyCount ?? replies.length}件
               </button>
             )}
 

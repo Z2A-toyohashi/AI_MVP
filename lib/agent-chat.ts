@@ -52,24 +52,35 @@ async function getGlobalSystemPrompt(): Promise<string> {
 }
 
 // エージェントとの会話でAI応答を生成（会話履歴付き）
-export async function generateAIResponse(agent: any, userMessage: string, history: {role: string, content: string}[] = []): Promise<string> {
+export async function generateAIResponse(agent: any, userMessage: string, history: {role: string, content: string}[] = [], imageBase64?: string): Promise<string> {
   const personality = agent.personality || { positive: 0, talkative: 0, curious: 0 };
   const globalPrompt = await getGlobalSystemPrompt();
   const systemPrompt = buildSystemPrompt(globalPrompt, personality, agent.level, agent.name);
 
   try {
     // 直近10件の履歴をOpenAI形式に変換
-    const historyMessages = history.slice(-10).map((m) => ({
+    const historyMessages: OpenAI.Chat.ChatCompletionMessageParam[] = history.slice(-10).map((m) => ({
       role: (m.role === 'ai' ? 'assistant' : m.role) as 'user' | 'assistant',
       content: m.content,
     }));
+
+    // 画像がある場合はvisionメッセージを構築
+    const lastUserMessage: OpenAI.Chat.ChatCompletionMessageParam = imageBase64
+      ? {
+          role: 'user',
+          content: [
+            { type: 'image_url', image_url: { url: imageBase64, detail: 'low' } },
+            { type: 'text', text: userMessage || '（画像を送りました）' },
+          ],
+        }
+      : { role: 'user', content: userMessage };
 
     const completion = await openai.chat.completions.create({
       model: 'gpt-4o-mini',
       messages: [
         { role: 'system', content: systemPrompt },
         ...historyMessages,
-        { role: 'user', content: userMessage },
+        lastUserMessage,
       ],
       temperature: 1.0,
       max_tokens: 150,

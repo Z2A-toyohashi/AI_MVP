@@ -28,8 +28,13 @@ export default function AgentChat({ agent, onLevelUp }: Props) {
   const [levelUpNotification, setLevelUpNotification] = useState<{ level: number; evolved: boolean } | null>(null);
   const [testPosting, setTestPosting] = useState(false);
   const [testPostResult, setTestPostResult] = useState<string | null>(null);
+  const [mediaPreview, setMediaPreview] = useState<{ url: string; uploadedUrl?: string; type: 'image' | 'voice' } | null>(null);
+  const [recording, setRecording] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const audioChunksRef = useRef<Blob[]>([]);
 
   const stageEmoji = ['🥚','🐣','🐥','🐤','🦜'][Math.min(agent.appearance_stage - 1, 4)];
 
@@ -44,29 +49,29 @@ export default function AgentChat({ agent, onLevelUp }: Props) {
   useEffect(() => { fetchMessages(); }, [agent.id]);
   useEffect(() => { messagesEndRef.current?.scrollIntoView({ behavior: 'instant' }); }, [messages]);
 
-  // 会話が空のとき、3秒後にAIから話しかける
+  // マウント時にグリーティングを試みる（APIが今日済みなら自動スキップ）
   useEffect(() => {
-    if (messages.length === 0 && !sending) {
-      const timer = setTimeout(async () => {
-        setSending(true);
-        try {
-          const res = await fetch('/api/conversations', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ agentId: agent.id, content: '__ai_greeting__', isGreeting: true }),
-          });
-          if (res.ok) {
-            await fetchMessages();
-          }
-        } catch (e) {
-          console.error(e);
-        } finally {
-          setSending(false);
+    const timer = setTimeout(async () => {
+      if (sending) return;
+      setSending(true);
+      try {
+        const res = await fetch('/api/conversations', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ agentId: agent.id, content: '__ai_greeting__', isGreeting: true }),
+        });
+        if (res.ok) {
+          const data = await res.json();
+          if (!data.skipped) await fetchMessages();
         }
-      }, 3000);
-      return () => clearTimeout(timer);
-    }
-  }, [messages.length, agent.id]);
+      } catch (e) {
+        console.error(e);
+      } finally {
+        setSending(false);
+      }
+    }, 1500);
+    return () => clearTimeout(timer);
+  }, [agent.id]);
 
   const fetchMessages = async () => {
     try {
@@ -87,21 +92,42 @@ export default function AgentChat({ agent, onLevelUp }: Props) {
   };
 
   const handleSend = async () => {
-    if (!input.trim() || sending) return;
+    if ((!input.trim() && !mediaPreview) || sending) return;
     setSending(true);
     const msg = input.trim();
+    const media = mediaPreview;
     setInput('');
+    setMediaPreview(null);
     if (textareaRef.current) textareaRef.current.style.height = 'auto';
 
     // 楽観的にユーザーメッセージを表示
     const tempId = `temp-${Date.now()}`;
-    setMessages(prev => [...prev, { id: tempId, role: 'user', content: msg, created_at: Date.now() }]);
+    const displayContent = media?.type === 'image'
+      ? (msg ? `${msg}\n[IMAGE:${media.url}]` : `[IMAGE:${media.url}]`)
+      : media?.type === 'voice'
+      ? (msg ? `${msg}\n[音声を送信]` : '[音声を送信]')
+      : msg;
+
+    setMessages(prev => [...prev, {
+      id: tempId, role: 'user',
+      content: displayContent,
+      created_at: Date.now(),
+    } as any]);
 
     try {
+      const body: any = { agentId: agent.id, content: msg || '（画像を送りました）' };
+      if (media?.type === 'image') {
+        // StorageにアップロードされたURLがあればそれを使う、なければBase64をフォールバック
+        body.imageUrl = media.uploadedUrl || null;
+        body.imageBase64 = media.uploadedUrl ? undefined : media.url;
+      } else if (media?.type === 'voice') {
+        body.content = msg ? `${msg}（音声メッセージ付き）` : '（音声メッセージを送りました）';
+      }
+
       const res = await fetch('/api/conversations', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ agentId: agent.id, content: msg }),
+        body: JSON.stringify(body),
       });
       if (res.ok) {
         const data = await res.json();
@@ -138,7 +164,94 @@ export default function AgentChat({ agent, onLevelUp }: Props) {
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); }
   };
 
+  const handleImageSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    // Canvas で最大 800px にリサイズ → Blob → Supabase Storage にアップロード
+    const img = new Image();
+    const objectUrl = URL.createObjectURL(file);
+    img.onload = async () => {
+      const MAX = 800;
+      let { width, height } = img;
+      if (width > MAX || height > MAX) {
+        if (width > height) { height = Math.round(height * MAX / width); width = MAX; }
+        else { width = Math.round(width * MAX / height); height = MAX; }
+      }
+      const canvas = document.createElement('canvas');
+      canvas.width = width;
+      canvas.height = height;
+      canvas.getContext('2d')!.drawImage(img, 0, 0, width, height);
+      // プレビュー用Base64（表示のみ）
+      const previewBase64 = canvas.toDataURL('image/jpeg', 0.7);
+      // まずプレビューを表示（アップロード中も見える）
+      setMediaPreview({ url: previewBase64, type: 'image' });
+      URL.revokeObjectURL(objectUrl);
+      // Storageにアップロードしてpublic URLを取得
+      try {
+        canvas.toBlob(async (blob) => {
+          if (!blob) return;
+          const formData = new FormData();
+          formData.append('image', blob, 'chat-image.jpg');
+          const res = await fetch('/api/upload-supabase', { method: 'POST', body: formData });
+          if (res.ok) {
+            const data = await res.json();
+            // uploadedUrl にStorageのURLを保存
+            setMediaPreview(prev => prev ? { ...prev, uploadedUrl: data.url } : prev);
+          }
+        }, 'image/jpeg', 0.7);
+      } catch (err) {
+        console.error('Upload failed:', err);
+      }
+    };
+    img.src = objectUrl;
+    e.target.value = '';
+  };
+
+  const handleVoiceToggle = async () => {
+    if (recording) {
+      mediaRecorderRef.current?.stop();
+      setRecording(false);
+      return;
+    }
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const mr = new MediaRecorder(stream);
+      audioChunksRef.current = [];
+      mr.ondataavailable = (e) => { if (e.data.size > 0) audioChunksRef.current.push(e.data); };
+      mr.onstop = () => {
+        const blob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
+        const url = URL.createObjectURL(blob);
+        setMediaPreview({ url, type: 'voice' });
+        stream.getTracks().forEach(t => t.stop());
+      };
+      mr.start();
+      mediaRecorderRef.current = mr;
+      setRecording(true);
+    } catch (e) {
+      console.error('マイクへのアクセスが拒否されました', e);
+    }
+  };
+
   const isAI = (role: string) => role === 'assistant' || role === 'ai';
+
+  // [IMAGE:url] を検出してテキストと画像に分割して表示
+  const renderContent = (content: string) => {
+    const parts = content.split(/(\[IMAGE:[^\]]+\])/g);
+    return parts.map((part, i) => {
+      const match = part.match(/^\[IMAGE:(.+)\]$/);
+      if (match) {
+        return (
+          <img
+            key={i}
+            src={match[1]}
+            alt="送信した画像"
+            className="max-w-full rounded-xl mt-1 max-h-48 object-contain"
+          />
+        );
+      }
+      return part ? <span key={i} className="whitespace-pre-wrap break-words">{part}</span> : null;
+    });
+  };
 
   const handleTestPost = async () => {
     setTestPosting(true);
@@ -243,9 +356,9 @@ export default function AgentChat({ agent, onLevelUp }: Props) {
 
               <div className={`flex flex-col max-w-[75%] ${isAI(msg.role) ? 'items-start' : 'items-end'}`}>
                 <div className={isAI(msg.role) ? 'bubble-ai px-4 py-3' : 'bubble-user px-4 py-3'}>
-                  <p className="text-sm font-semibold text-gray-800 leading-relaxed whitespace-pre-wrap break-words">
-                    {msg.content}
-                  </p>
+                  <div className="text-sm font-semibold text-gray-800 leading-relaxed">
+                    {renderContent(msg.content)}
+                  </div>
                 </div>
                 <span className="text-[10px] text-gray-400 font-bold mt-1 px-1">
                   {formatTime(msg.created_at)}
@@ -290,36 +403,73 @@ export default function AgentChat({ agent, onLevelUp }: Props) {
             {testPosting ? '投稿中...' : '🧪 テスト: 掲示板に投稿する'}
           </button>
         </div>
-        <div className="flex items-end gap-2 max-w-lg mx-auto">
-          <textarea
-            ref={textareaRef}
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            onKeyDown={handleKeyDown}
-            placeholder={`${agent.name}に話しかける...`}
-            rows={1}
-            disabled={sending}
-            className="flex-1 px-4 py-3 bg-gray-100 rounded-2xl border-2 border-transparent focus:border-[#84d8ff] focus:bg-white focus:outline-none resize-none text-sm font-semibold text-gray-800 placeholder-gray-400 transition-all"
-            style={{ minHeight: '48px', maxHeight: '120px', fontSize: '16px' }}
-            onInput={(e) => {
-              const t = e.target as HTMLTextAreaElement;
-              t.style.height = 'auto';
-              t.style.height = Math.min(t.scrollHeight, 120) + 'px';
-            }}
-          />
-          <button
-            onClick={handleSend}
-            disabled={!input.trim() || sending}
-            className="w-12 h-12 flex items-center justify-center rounded-2xl flex-shrink-0 transition-all"
-            style={{
-              background: input.trim() && !sending ? '#58cc02' : '#e5e5e5',
-              boxShadow: input.trim() && !sending ? '0 4px 0 #46a302' : '0 4px 0 #c4c4c4',
-            }}
-          >
-            <svg className="w-5 h-5 text-white" fill="currentColor" viewBox="0 0 20 20">
-              <path d="M10.894 2.553a1 1 0 00-1.788 0l-7 14a1 1 0 001.169 1.409l5-1.429A1 1 0 009 15.571V11a1 1 0 112 0v4.571a1 1 0 00.725.962l5 1.428a1 1 0 001.17-1.408l-7-14z" />
-            </svg>
-          </button>
+        <div className="max-w-lg mx-auto">
+          {/* メディアプレビュー */}
+          {mediaPreview && (
+            <div className="mb-2 flex items-center gap-2 bg-gray-50 rounded-2xl px-3 py-2">
+              {mediaPreview.type === 'image' ? (
+                <img src={mediaPreview.url} alt="preview" className="w-12 h-12 rounded-xl object-cover" />
+              ) : (
+                <div className="flex items-center gap-2">
+                  <span className="text-xl">🎤</span>
+                  <audio src={mediaPreview.url} controls className="h-8 max-w-[160px]" />
+                </div>
+              )}
+              <button onClick={() => setMediaPreview(null)} className="ml-auto text-gray-400 hover:text-gray-600 text-lg leading-none">✕</button>
+            </div>
+          )}
+          <div className="flex items-end gap-2">
+            {/* 画像ボタン */}
+            <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={handleImageSelect} />
+            <button
+              onClick={() => fileInputRef.current?.click()}
+              disabled={sending}
+              className="w-10 h-10 flex items-center justify-center rounded-2xl bg-gray-100 hover:bg-gray-200 transition-colors flex-shrink-0"
+            >
+              <svg className="w-5 h-5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+              </svg>
+            </button>
+            {/* 音声ボタン */}
+            <button
+              onClick={handleVoiceToggle}
+              disabled={sending}
+              className={`w-10 h-10 flex items-center justify-center rounded-2xl transition-colors flex-shrink-0 ${recording ? 'bg-red-100 animate-pulse' : 'bg-gray-100 hover:bg-gray-200'}`}
+            >
+              <svg className={`w-5 h-5 ${recording ? 'text-red-500' : 'text-gray-500'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" />
+              </svg>
+            </button>
+            <textarea
+              ref={textareaRef}
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              onKeyDown={handleKeyDown}
+              placeholder={`${agent.name}に話しかける...`}
+              rows={1}
+              disabled={sending}
+              className="flex-1 px-4 py-3 bg-gray-100 rounded-2xl border-2 border-transparent focus:border-[#84d8ff] focus:bg-white focus:outline-none resize-none text-sm font-semibold text-gray-800 placeholder-gray-400 transition-all"
+              style={{ minHeight: '48px', maxHeight: '120px', fontSize: '16px' }}
+              onInput={(e) => {
+                const t = e.target as HTMLTextAreaElement;
+                t.style.height = 'auto';
+                t.style.height = Math.min(t.scrollHeight, 120) + 'px';
+              }}
+            />
+            <button
+              onClick={handleSend}
+              disabled={(!input.trim() && !mediaPreview) || sending}
+              className="w-12 h-12 flex items-center justify-center rounded-2xl flex-shrink-0 transition-all"
+              style={{
+                background: (input.trim() || mediaPreview) && !sending ? '#58cc02' : '#e5e5e5',
+                boxShadow: (input.trim() || mediaPreview) && !sending ? '0 4px 0 #46a302' : '0 4px 0 #c4c4c4',
+              }}
+            >
+              <svg className="w-5 h-5 text-white" fill="currentColor" viewBox="0 0 20 20">
+                <path d="M10.894 2.553a1 1 0 00-1.788 0l-7 14a1 1 0 001.169 1.409l5-1.429A1 1 0 009 15.571V11a1 1 0 112 0v4.571a1 1 0 00.725.962l5 1.428a1 1 0 001.17-1.408l-7-14z" />
+              </svg>
+            </button>
+          </div>
         </div>
       </div>
     </div>

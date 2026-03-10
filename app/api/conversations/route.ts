@@ -3,6 +3,10 @@ import { after } from 'next/server';
 import { getServerSupabase } from '@/lib/supabase-client';
 import { generateAIResponse } from '@/lib/agent-chat';
 
+// API Routeのbodyサイズ制限を10MBに拡張（画像Base64送信のため）
+export const maxDuration = 60;
+export const dynamic = 'force-dynamic';
+
 function getTodayStartJST(now: number): number {
   const jst = new Date(now + 9 * 60 * 60 * 1000);
   jst.setUTCHours(0, 0, 0, 0);
@@ -39,7 +43,7 @@ export async function GET(request: NextRequest) {
 // 会話送信（ユーザー → AI）
 export async function POST(request: NextRequest) {
   try {
-    const { agentId, content, isGreeting } = await request.json();
+    const { agentId, content, isGreeting, imageBase64, imageUrl } = await request.json();
 
     if (!agentId || !content) {
       return NextResponse.json({ error: 'agentId and content required' }, { status: 400 });
@@ -62,13 +66,13 @@ export async function POST(request: NextRequest) {
 
     // グリーティングモード: ユーザーメッセージは保存せず、AIから話しかける
     if (isGreeting) {
-      // 今日（JST）すでにAIから話しかけていれば何もしない
+      // 今日（JST）すでにAIから話しかけていれば何もしない（role='ai'と'assistant'両方チェック）
       const todayStart = getTodayStartJST(now);
       const { count: todayAiCount } = await supabase
         .from('conversations')
         .select('*', { count: 'exact', head: true })
         .eq('agent_id', agentId)
-        .eq('role', 'ai')
+        .in('role', ['ai', 'assistant'])
         .gte('created_at', todayStart);
 
       if ((todayAiCount || 0) > 0) {
@@ -146,13 +150,35 @@ ${historyText}
       return NextResponse.json({ response: greeting });
     }
 
-    // ユーザーメッセージを保存
+    // ユーザーメッセージを保存（画像URLがある場合はcontentに埋め込む）
+    let savedContent = content;
+    if (imageUrl) {
+      savedContent = content ? `${content}\n[IMAGE:${imageUrl}]` : `[IMAGE:${imageUrl}]`;
+    } else if (imageBase64) {
+      // フォールバック: Base64をStorageにアップロード
+      try {
+        const base64Data = imageBase64.replace(/^data:image\/\w+;base64,/, '');
+        const buffer = Buffer.from(base64Data, 'base64');
+        const ext = imageBase64.match(/^data:image\/(\w+);/)?.[1] || 'jpg';
+        const filename = `chat-${agentId}-${now}.${ext}`;
+        const { error: uploadError } = await supabase.storage
+          .from('uploads')
+          .upload(filename, buffer, { contentType: `image/${ext}`, upsert: true });
+        if (!uploadError) {
+          const { data: urlData } = supabase.storage.from('uploads').getPublicUrl(filename);
+          savedContent = content ? `${content}\n[IMAGE:${urlData.publicUrl}]` : `[IMAGE:${urlData.publicUrl}]`;
+        }
+      } catch (e) {
+        console.error('Image upload failed, saving text only:', e);
+      }
+    }
+
     const { error: userError } = await supabase
       .from('conversations')
       .insert({
         agent_id: agentId,
         role: 'user',
-        content,
+        content: savedContent,
         created_at: now,
       });
 
@@ -171,8 +197,9 @@ ${historyText}
 
     const orderedHistory = (history || []).reverse();
 
-    // AI応答生成（履歴付き）
-    const aiResponse = await generateAIResponse(agent, content, orderedHistory);
+    // AI応答生成（履歴付き）- imageUrlがあればURLで、なければBase64で渡す
+    const imageForAI = imageUrl || imageBase64 || undefined;
+    const aiResponse = await generateAIResponse(agent, content, orderedHistory, imageForAI);
 
     // AI応答を保存
     const { error: aiError } = await supabase

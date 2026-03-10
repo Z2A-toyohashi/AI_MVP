@@ -4,19 +4,31 @@ import OpenAI from 'openai';
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
-export interface ParkConversationTurn {
-  agentId: string;
-  agentName: string;
-  message: string;
+// 最新の公園会話を取得（フロントがポーリング）
+export async function GET(request: NextRequest) {
+  try {
+    const supabase = getServerSupabase();
+    const since = request.nextUrl.searchParams.get('since') || '0';
+
+    const { data, error } = await supabase
+      .from('park_conversations')
+      .select('*')
+      .gt('created_at', parseInt(since))
+      .order('created_at', { ascending: true })
+      .limit(50);
+
+    if (error) {
+      // テーブルが存在しない場合は空を返す
+      return NextResponse.json({ turns: [] });
+    }
+
+    return NextResponse.json({ turns: data || [] });
+  } catch (e) {
+    return NextResponse.json({ turns: [] });
+  }
 }
 
-export interface ParkConversationGroup {
-  agentIds: string[]; // 会話に参加するエージェントのID
-  turns: ParkConversationTurn[];
-  topic: string;
-}
-
-// 公園の会話を生成する
+// 公園の会話を生成してDBに保存（バッチから呼ばれる）
 export async function POST(request: NextRequest) {
   try {
     const { agents, recentPosts } = await request.json();
@@ -26,34 +38,41 @@ export async function POST(request: NextRequest) {
     }
 
     const supabase = getServerSupabase();
+    const groupId = `group-${Date.now()}`;
 
     // 2〜3体のグループをランダムに選ぶ（最大2グループ）
     const shuffled = [...agents].sort(() => Math.random() - 0.5);
-    const groups: ParkConversationGroup[] = [];
 
-    // グループ1: 2〜3体
     const group1Size = Math.min(shuffled.length >= 3 && Math.random() > 0.5 ? 3 : 2, shuffled.length);
     const group1Agents = shuffled.slice(0, group1Size);
-
-    // グループ2: 残りから2体（4体以上いる場合）
     const remaining = shuffled.slice(group1Size);
     const group2Agents = remaining.length >= 2 ? remaining.slice(0, 2) : [];
 
-    // タイムラインの話題を抽出
     const topicPosts = (recentPosts || []).slice(0, 5);
     const topicText = topicPosts.length > 0
       ? topicPosts.map((p: any) => `「${p.content}」`).join('、')
       : '最近の出来事';
 
-    // グループ1の会話を生成
-    const conv1 = await generateGroupConversation(group1Agents, topicText);
-    if (conv1) groups.push(conv1);
+    const groups = [];
 
-    // グループ2の会話を生成（エージェントが十分いる場合）
+    const conv1 = await generateGroupConversation(group1Agents, topicText);
+    if (conv1) {
+      groups.push(conv1);
+      // DBに保存
+      await saveConversationToDB(supabase, conv1, `${groupId}-1`);
+    }
+
     if (group2Agents.length >= 2) {
       const conv2 = await generateGroupConversation(group2Agents, topicText);
-      if (conv2) groups.push(conv2);
+      if (conv2) {
+        groups.push(conv2);
+        await saveConversationToDB(supabase, conv2, `${groupId}-2`);
+      }
     }
+
+    // 24時間以上前のデータを削除
+    const cutoff = Date.now() - 24 * 60 * 60 * 1000;
+    await supabase.from('park_conversations').delete().lt('created_at', cutoff).catch(() => {});
 
     return NextResponse.json({ groups });
   } catch (error) {
@@ -62,10 +81,27 @@ export async function POST(request: NextRequest) {
   }
 }
 
+async function saveConversationToDB(supabase: any, conv: any, groupId: string) {
+  try {
+    const now = Date.now();
+    const rows = conv.turns.map((t: any, i: number) => ({
+      agent_id: t.agentId,
+      agent_name: t.agentName,
+      message: t.message,
+      group_id: groupId,
+      topic: conv.topic,
+      created_at: now + i * 3000, // 3秒ずつずらして保存
+    }));
+    await supabase.from('park_conversations').insert(rows);
+  } catch (e) {
+    console.error('saveConversationToDB error:', e);
+  }
+}
+
 async function generateGroupConversation(
   agents: Array<{ id: string; name: string; personality?: any; level?: number }>,
   topicText: string
-): Promise<ParkConversationGroup | null> {
+): Promise<any | null> {
   try {
     const agentDescriptions = agents.map(a => {
       const p = a.personality || {};
@@ -107,7 +143,6 @@ async function generateGroupConversation(
     const result = JSON.parse(completion.choices[0]?.message?.content || '{}');
     if (!result.turns || result.turns.length === 0) return null;
 
-    // agentIdをnameから逆引き
     const nameToId = new Map(agents.map(a => [a.name, a.id]));
 
     return {

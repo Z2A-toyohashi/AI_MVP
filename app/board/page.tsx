@@ -7,6 +7,7 @@ import { supabase } from '@/lib/supabase-client';
 import PostItem from '@/components/PostItem';
 import PostInput from '@/components/PostInput';
 import FooterNav from '@/components/FooterNav';
+import Header from '@/components/Header';
 
 interface ParkAgent {
   id: string;
@@ -53,7 +54,13 @@ export default function BoardPage() {
   const [replyTo, setReplyTo] = useState<string | undefined>();
   const [replyToPost, setReplyToPost] = useState<Post | undefined>();
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<'timeline' | 'park'>('timeline');
+  const [activeTab, setActiveTab] = useState<'timeline' | 'park' | 'dm'>('timeline');
+  const [hasMore, setHasMore] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
+
+  // DM状態
+  const [dms, setDms] = useState<Array<{ id: string; from_agent_name: string; to_agent_name: string; message: string; reply?: string; created_at: number }>>([]);
+  const [dmLoading, setDmLoading] = useState(false);
 
   // 公園状態
   const [parkAgents, setParkAgents] = useState<ParkAgent[]>([]);
@@ -72,6 +79,7 @@ export default function BoardPage() {
   const turnIdxRef = useRef(0);
   const parkAgentsRef = useRef<ParkAgent[]>([]);
   const generatingConvRef = useRef(false);
+  const lastSeenAtRef = useRef<number>(0);
 
   // ---- タイムライン ----
   useEffect(() => {
@@ -83,12 +91,24 @@ export default function BoardPage() {
     return () => { subscription.unsubscribe(); };
   }, []);
 
+  // 無限スクロール: スクロールコンテナの末尾検知
+  const handleTimelineScroll = (e: React.UIEvent<HTMLElement>) => {
+    const el = e.currentTarget;
+    const nearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 200;
+    if (nearBottom && hasMore && !loadingMore) {
+      loadMorePosts();
+    }
+  };
+
   // ---- 公園タブ ----
   useEffect(() => {
     if (activeTab === 'park') {
       startParkSession();
     } else {
       stopParkSession();
+    }
+    if (activeTab === 'dm') {
+      fetchDMs();
     }
     return () => stopParkSession();
   }, [activeTab]);
@@ -101,8 +121,71 @@ export default function BoardPage() {
   const startParkSession = async () => {
     const agents = await fetchParkAgents();
     parkAgentsRef.current = agents;
-    // 最初の会話を生成
+    lastSeenAtRef.current = Date.now() - 60000; // 直近1分のメッセージから取得
+
+    // DBから既存の会話を取得して表示
+    await pollParkConversations(agents);
+
+    // 10秒ごとにDBをポーリング
+    parkTimerRef.current = setInterval(() => pollParkConversations(parkAgentsRef.current), 10000);
+
+    // DBに会話がなければ即生成
     triggerNewConversationWithAgents(agents);
+  };
+
+  const pollParkConversations = async (agents: ParkAgent[]) => {
+    try {
+      const res = await fetch(`/api/park/conversation?since=${lastSeenAtRef.current}`);
+      const data = await res.json();
+      const newTurns: Array<{ agent_id: string; agent_name: string; message: string; created_at: number; group_id: string; topic: string }> = data.turns || [];
+
+      if (newTurns.length === 0) return;
+
+      // 最後に見た時刻を更新
+      lastSeenAtRef.current = Math.max(...newTurns.map(t => t.created_at));
+
+      // エージェント位置を更新（グループごとに集合）
+      const groupMap = new Map<string, string[]>();
+      newTurns.forEach(t => {
+        if (!groupMap.has(t.group_id)) groupMap.set(t.group_id, []);
+        if (!groupMap.get(t.group_id)!.includes(t.agent_id)) {
+          groupMap.get(t.group_id)!.push(t.agent_id);
+        }
+      });
+
+      const newPositions: Record<string, { x: number; y: number }> = {};
+      agents.forEach((a, i) => { newPositions[a.id] = BASE_POSITIONS[i % BASE_POSITIONS.length]; });
+      let gi = 0;
+      groupMap.forEach((agentIds) => {
+        const center = GROUP_CLUSTER_CENTERS[gi % GROUP_CLUSTER_CENTERS.length];
+        agentIds.forEach((id, ii) => {
+          const angle = (ii / agentIds.length) * Math.PI * 2;
+          newPositions[id] = { x: center.x + Math.cos(angle) * 8, y: center.y + Math.sin(angle) * 5 };
+        });
+        gi++;
+      });
+      setAgentPositions(newPositions);
+
+      // トピックを更新
+      const topics = Array.from(new Set(newTurns.map(t => t.topic).filter(Boolean)));
+      if (topics.length > 0) {
+        setConvGroups(Array.from(groupMap.entries()).map(([gid, ids]) => ({
+          agentIds: ids,
+          topic: newTurns.find(t => t.group_id === gid)?.topic || '雑談',
+          turns: [],
+        })));
+      }
+
+      // 吹き出しを順番に表示（3秒ずつ）
+      newTurns.forEach((turn, i) => {
+        if (convTimerRef.current) clearTimeout(convTimerRef.current);
+        convTimerRef.current = setTimeout(() => {
+          setSpeakerMessages(prev => ({ ...prev, [turn.agent_id]: turn.message }));
+        }, i * 3000);
+      });
+    } catch (e) {
+      // テーブル未作成などのエラーは無視してフォールバック
+    }
   };
 
   const fetchParkAgents = async () => {
@@ -223,6 +306,19 @@ export default function BoardPage() {
     }, 3000);
   };
 
+  const fetchDMs = async () => {
+    setDmLoading(true);
+    try {
+      const res = await fetch('/api/agent-dm');
+      const data = await res.json();
+      setDms(data.dms || []);
+    } catch (e) {
+      console.error('fetchDMs error:', e);
+    } finally {
+      setDmLoading(false);
+    }
+  };
+
   // ---- タイムライン共通 ----
   const initializeApp = async () => {
     const id = getUserId();
@@ -238,11 +334,34 @@ export default function BoardPage() {
 
   const fetchPosts = async () => {
     try {
-      const res = await fetch(`/api/posts${userId ? `?userId=${userId}` : ''}`);
+      const res = await fetch(`/api/posts?limit=20${userId ? `&userId=${userId}` : ''}`);
       const data = await res.json();
-      if (data.posts) setPosts(data.posts);
+      if (data.posts) {
+        setPosts(data.posts);
+        setHasMore(data.hasMore ?? false);
+      }
     } catch (error) {
       console.error('Failed to fetch posts:', error);
+    }
+  };
+
+  const loadMorePosts = async () => {
+    if (loadingMore || !hasMore || posts.length === 0) return;
+    setLoadingMore(true);
+    try {
+      const oldest = posts[posts.length - 1].created_at;
+      const res = await fetch(`/api/posts?limit=20&before=${oldest}${userId ? `&userId=${userId}` : ''}`);
+      const data = await res.json();
+      if (data.posts && data.posts.length > 0) {
+        setPosts(prev => [...prev, ...data.posts]);
+        setHasMore(data.hasMore ?? false);
+      } else {
+        setHasMore(false);
+      }
+    } catch (error) {
+      console.error('Failed to load more posts:', error);
+    } finally {
+      setLoadingMore(false);
     }
   };
 
@@ -287,9 +406,6 @@ export default function BoardPage() {
 
   const handleCancelReply = () => { setReplyTo(undefined); setReplyToPost(undefined); };
 
-  const getReplies = (threadId: string): Post[] => posts.filter(p => p.thread_id === threadId);
-  const topLevelPosts = posts.filter(p => !p.thread_id);
-
   const formatTime = (ts: number) => {
     const diff = Date.now() - ts;
     if (diff < 3600000) return `${Math.floor(diff / 60000)}分前`;
@@ -312,68 +428,120 @@ export default function BoardPage() {
   }
 
   return (
-    <div className="min-h-screen bg-white flex flex-col pb-16">
-      <div className="w-full max-w-lg mx-auto flex flex-col min-h-screen">
-        {/* ヘッダー */}
-        <header className="bg-white border-b-2 border-gray-100 flex-shrink-0 sticky top-0 z-10">
-          <div className="px-4 py-3 flex items-center justify-center">
-            <h1 className="text-lg font-black text-gray-800">交流</h1>
-          </div>
-          <div className="flex border-t border-gray-100">
-            <button
-              onClick={() => setActiveTab('timeline')}
-              className={`flex-1 py-5 text-sm font-black transition-colors ${activeTab === 'timeline' ? 'text-[#58cc02] border-b-2 border-[#58cc02]' : 'text-gray-400'}`}
-            >
-              タイムライン
-            </button>
-            <button
-              onClick={() => setActiveTab('park')}
-              className={`flex-1 py-5 text-sm font-black transition-colors ${activeTab === 'park' ? 'text-[#58cc02] border-b-2 border-[#58cc02]' : 'text-gray-400'}`}
-            >
-              🌿 公園
-            </button>
-          </div>
-        </header>
+    <div className="h-screen bg-white flex flex-col overflow-hidden">
+      <div className="w-full max-w-lg mx-auto flex flex-col h-full">
+        {/* 共通ヘッダー */}
+        <Header title="交流" showBack={false} />
+
+        {/* タブ */}
+        <div className="flex border-b-2 border-gray-100 flex-shrink-0 bg-white sticky top-[64px] z-10">
+          <button
+            onClick={() => setActiveTab('timeline')}
+            className={`flex-1 py-5 text-sm font-black transition-colors ${activeTab === 'timeline' ? 'text-[#58cc02] border-b-2 border-[#58cc02]' : 'text-gray-400'}`}
+          >
+            タイムライン
+          </button>
+          <button
+            onClick={() => setActiveTab('park')}
+            className={`flex-1 py-5 text-sm font-black transition-colors ${activeTab === 'park' ? 'text-[#58cc02] border-b-2 border-[#58cc02]' : 'text-gray-400'}`}
+          >
+            🌿 公園
+          </button>
+          <button
+            onClick={() => setActiveTab('dm')}
+            className={`flex-1 py-5 text-sm font-black transition-colors ${activeTab === 'dm' ? 'text-[#58cc02] border-b-2 border-[#58cc02]' : 'text-gray-400'}`}
+          >
+            💬 DM
+          </button>
+        </div>
 
         {activeTab === 'timeline' ? (
-          <main className="flex-1">
-            <div className="border-b-2 border-gray-100 bg-white">
-              <PostInput
-                onPost={handlePost}
-                replyTo={replyTo}
-                replyToPost={replyToPost}
-                onCancel={handleCancelReply}
-                placeholder={replyTo ? '返信を入力...' : 'いま、思ったこと'}
-              />
-            </div>
+          <main className="flex-1 overflow-y-auto pb-36" onScroll={handleTimelineScroll}>
             <div className="bg-white">
-              {topLevelPosts.length === 0 ? (
+              {posts.length === 0 ? (
                 <div className="py-20 text-center px-8">
                   <div className="text-6xl mb-4">📝</div>
                   <p className="font-black text-gray-700 text-lg mb-2">まだ投稿がありません</p>
                   <p className="text-gray-400 font-bold text-sm">最初の投稿をしてみよう！</p>
                 </div>
               ) : (
-                topLevelPosts.map(post => (
-                  <PostItem
-                    key={post.id}
-                    post={post}
-                    replies={getReplies(post.id)}
-                    onReply={handleReply}
-                    currentUserId={userId}
-                    onReactionUpdate={fetchPosts}
-                    onDelete={async (postId) => {
-                      try {
-                        await fetch(`/api/posts?id=${postId}`, { method: 'DELETE' });
-                        await fetchPosts();
-                      } catch (error) {
-                        console.error('Failed to delete post:', error);
-                      }
-                    }}
-                  />
-                ))
+                <>
+                  {posts.map(post => (
+                    <PostItem
+                      key={post.id}
+                      post={post}
+                      replies={[]}
+                      onReply={handleReply}
+                      currentUserId={userId}
+                      onReactionUpdate={fetchPosts}
+                      onDelete={async (postId) => {
+                        try {
+                          await fetch(`/api/posts?id=${postId}`, { method: 'DELETE' });
+                          await fetchPosts();
+                        } catch (error) {
+                          console.error('Failed to delete post:', error);
+                        }
+                      }}
+                    />
+                  ))}
+                  <div className="py-6 flex justify-center">
+                    {loadingMore ? (
+                      <div className="w-8 h-8 border-[3px] border-[#58cc02] border-t-transparent rounded-full animate-spin" />
+                    ) : !hasMore && posts.length > 0 ? (
+                      <p className="text-xs font-bold text-gray-300">すべて読み込みました</p>
+                    ) : null}
+                  </div>
+                </>
               )}
             </div>
+          </main>
+        ) : activeTab === 'dm' ? (
+          /* DM一覧 */
+          <main className="flex-1 overflow-y-auto">
+            <div className="px-4 py-3 border-b border-gray-100 flex items-center justify-between">
+              <p className="text-xs font-black text-gray-400 uppercase tracking-wider">AIキャラ同士のやりとり</p>
+              <button onClick={fetchDMs} className="text-xs font-black text-[#58cc02]">更新</button>
+            </div>
+            {dmLoading ? (
+              <div className="py-16 flex justify-center">
+                <div className="w-6 h-6 border-3 border-[#58cc02] border-t-transparent rounded-full animate-spin" />
+              </div>
+            ) : dms.length === 0 ? (
+              <div className="py-20 text-center px-8">
+                <div className="text-5xl mb-4">💬</div>
+                <p className="font-black text-gray-700 text-base mb-1">まだDMがありません</p>
+                <p className="text-gray-400 font-bold text-xs">AIキャラが育つと自動でやりとりが始まります</p>
+              </div>
+            ) : (
+              <div className="divide-y divide-gray-100">
+                {dms.map(dm => (
+                  <div key={dm.id} className="px-4 py-4">
+                    <div className="flex items-center gap-2 mb-2">
+                      <span className="text-xs font-black text-[#58cc02]">{dm.from_agent_name}</span>
+                      <span className="text-xs text-gray-300">→</span>
+                      <span className="text-xs font-black text-[#1cb0f6]">{dm.to_agent_name}</span>
+                      <span className="ml-auto text-[10px] text-gray-400 font-bold">
+                        {formatTime(dm.created_at)}
+                      </span>
+                    </div>
+                    {/* 送信メッセージ */}
+                    <div className="flex justify-start mb-1">
+                      <div className="bg-[#f0fce4] border border-[#58cc02]/30 rounded-2xl rounded-tl-sm px-3 py-2 max-w-[80%]">
+                        <p className="text-sm font-semibold text-gray-800">{dm.message}</p>
+                      </div>
+                    </div>
+                    {/* 返信 */}
+                    {dm.reply && (
+                      <div className="flex justify-end">
+                        <div className="bg-[#e8f4ff] border border-[#1cb0f6]/30 rounded-2xl rounded-tr-sm px-3 py-2 max-w-[80%]">
+                          <p className="text-sm font-semibold text-gray-800">{dm.reply}</p>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
           </main>
         ) : (
           /* 公園ビュー（俯瞰） */
@@ -706,6 +874,21 @@ export default function BoardPage() {
           </main>
         )}
       </div>
+
+      {/* 投稿入力欄: フッター(fixed bottom-0, h-16)の真上に固定 */}
+      {activeTab === 'timeline' && (
+        <div className="fixed bottom-16 left-0 right-0 z-40 bg-white border-t-2 border-gray-100">
+          <div className="max-w-lg mx-auto">
+            <PostInput
+              onPost={handlePost}
+              replyTo={replyTo}
+              replyToPost={replyToPost}
+              onCancel={handleCancelReply}
+              placeholder={replyTo ? '返信を入力...' : 'いま、思ったこと'}
+            />
+          </div>
+        </div>
+      )}
 
       <FooterNav />
     </div>

@@ -7,24 +7,44 @@ export async function GET(request: NextRequest) {
   try {
     const serverSupabase = getServerSupabase();
     const userId = request.nextUrl.searchParams.get('userId');
+    const limit = Math.min(parseInt(request.nextUrl.searchParams.get('limit') || '20'), 50);
+    const before = request.nextUrl.searchParams.get('before');
+    const threadId = request.nextUrl.searchParams.get('threadId'); // 返信取得モード
 
-    const { data, error } = await serverSupabase
+    // 返信取得モード
+    if (threadId) {
+      const { data, error } = await serverSupabase
+        .from('posts')
+        .select('*')
+        .eq('thread_id', threadId)
+        .order('created_at', { ascending: true });
+      if (error) throw error;
+      return NextResponse.json({ posts: data || [] });
+    }
+
+    let query = serverSupabase
       .from('posts')
       .select('*')
-      .order('created_at', { ascending: false });
+      .is('thread_id', null) // トップレベル投稿のみ
+      .neq('author_type', 'ai') // モブAI除外
+      .order('created_at', { ascending: false })
+      .limit(limit + 1); // hasMoreを判定するため1件多く取得
 
+    if (before) {
+      query = query.lt('created_at', parseInt(before));
+    }
+
+    const { data, error } = await query;
     if (error) throw error;
 
     const posts = data || [];
+    const hasMore = posts.length > limit;
+    const pagePosts = hasMore ? posts.slice(0, limit) : posts;
 
-    // 名前・表示名のない匿名投稿をフィルタリング
-    // agent投稿: agentsテーブルにnameが存在するか確認
-    // user投稿: usersテーブルにdisplay_nameが存在するか確認
-    // 自分のエージェント投稿は常に含める
-    const agentIds = [...new Set(posts.filter(p => p.author_type === 'agent').map(p => p.author_id))];
-    const userIds = [...new Set(posts.filter(p => p.author_type === 'user').map(p => p.author_id))];
+    // 名前検証: 取得した投稿のagent/userのみ確認（全件ではなく）
+    const agentIds = [...new Set(pagePosts.filter(p => p.author_type === 'agent').map(p => p.author_id))];
+    const userIds = [...new Set(pagePosts.filter(p => p.author_type === 'user').map(p => p.author_id))];
 
-    // エージェント名を一括取得
     const agentNameMap = new Map<string, boolean>();
     if (agentIds.length > 0) {
       const { data: agents } = await serverSupabase
@@ -34,7 +54,6 @@ export async function GET(request: NextRequest) {
       (agents || []).forEach(a => agentNameMap.set(a.user_id, !!a.name));
     }
 
-    // ユーザー表示名を一括取得
     const userNameMap = new Map<string, boolean>();
     if (userIds.length > 0) {
       const { data: users } = await serverSupabase
@@ -44,7 +63,6 @@ export async function GET(request: NextRequest) {
       (users || []).forEach(u => userNameMap.set(u.id, !!u.display_name));
     }
 
-    // 自分のエージェントのuser_idを取得
     let myAgentUserId: string | null = null;
     if (userId) {
       const { data: myAgent } = await serverSupabase
@@ -55,20 +73,17 @@ export async function GET(request: NextRequest) {
       myAgentUserId = myAgent?.user_id || null;
     }
 
-    const filtered = posts.filter(post => {
-      // ai_charactersテーブル由来のモブAI投稿は除外（author_type === 'ai'）
-      if (post.author_type === 'ai') return false;
-      // 自分のエージェント投稿は常に含める
+    const filtered = pagePosts.filter(post => {
       if (myAgentUserId && post.author_id === myAgentUserId) return true;
       if (post.author_type === 'agent') return agentNameMap.get(post.author_id) === true;
       if (post.author_type === 'user') return userNameMap.get(post.author_id) === true;
       return true;
     });
 
-    return NextResponse.json({ posts: filtered });
+    return NextResponse.json({ posts: filtered, hasMore });
   } catch (error) {
     console.error('Failed to fetch posts:', error);
-    return NextResponse.json({ posts: [] }, { status: 500 });
+    return NextResponse.json({ posts: [], hasMore: false }, { status: 500 });
   }
 }
 
