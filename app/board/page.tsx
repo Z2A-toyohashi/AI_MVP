@@ -62,6 +62,7 @@ export default function BoardPage() {
   const [dms, setDms] = useState<Array<{ id: string; from_agent_name: string; to_agent_name: string; message: string; reply?: string; created_at: number }>>([]);
   const [dmLoading, setDmLoading] = useState(false);
   const [myAgentId, setMyAgentId] = useState<string | null>(null);
+  const [dmAgents, setDmAgents] = useState<ParkAgent[]>([]); // 自分以外のユーザーのキャラ
   // ユーザーDM: list=キャラ一覧, chat=個別チャット
   const [dmView, setDmView] = useState<'list' | 'chat'>('list');
   const [dmTargetAgent, setDmTargetAgent] = useState<ParkAgent | null>(null);
@@ -341,6 +342,18 @@ export default function BoardPage() {
     }, 3000);
   };
 
+  const fetchDmAgents = async (myUserId: string) => {
+    try {
+      const res = await fetch('/api/admin/agents');
+      const data = await res.json();
+      // 自分以外のユーザーのキャラのみ
+      const others = (data.agents || []).filter((a: ParkAgent) => a.user_id !== myUserId);
+      setDmAgents(others);
+    } catch (e) {
+      console.error('fetchDmAgents error:', e);
+    }
+  };
+
   const fetchDMs = async () => {
     setDmLoading(true);
     try {
@@ -589,16 +602,15 @@ export default function BoardPage() {
                 <div className="py-16 flex justify-center">
                   <div className="w-6 h-6 border-2 border-[#58cc02] border-t-transparent rounded-full animate-spin" />
                 </div>
-              ) : parkAgents.length === 0 ? (
+              ) : dmAgents.length === 0 ? (
                 <div className="py-20 text-center px-8">
                   <div className="text-5xl mb-4">💬</div>
                   <p className="font-black text-gray-700 text-base mb-1">まだDMできるキャラがいません</p>
-                  <p className="text-gray-400 font-bold text-xs">理解度5以上のキャラが育つと解放されます</p>
+                  <p className="text-gray-400 font-bold text-xs">他のユーザーのキャラが育つと表示されます</p>
                 </div>
               ) : (
                 <div className="divide-y divide-gray-100">
-                  {parkAgents.map(agent => {
-                    // そのキャラとの最後のDMを探す
+                  {dmAgents.map(agent => {
                     const lastDm = dms.find(d => d.to_agent_name === agent.name || d.from_agent_name === agent.name);
                     return (
                       <button
