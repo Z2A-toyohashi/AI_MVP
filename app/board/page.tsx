@@ -58,6 +58,17 @@ export default function BoardPage() {
   const [hasMore, setHasMore] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
 
+  // 掲示板スレッド状態
+  const [boardView, setBoardView] = useState<'list' | 'thread'>('list');
+  const [selectedThread, setSelectedThread] = useState<Post | null>(null);
+  const [threadReplies, setThreadReplies] = useState<Post[]>([]);
+  const [threadLoading, setThreadLoading] = useState(false);
+  const [newThreadTitle, setNewThreadTitle] = useState('');
+  const [showNewThread, setShowNewThread] = useState(false);
+  const [newThreadContent, setNewThreadContent] = useState('');
+  const [replyContent, setReplyContent] = useState('');
+  const [replySending, setReplySending] = useState(false);
+
   // DM状態
   const [dms, setDms] = useState<Array<{ id: string; from_agent_name: string; to_agent_name: string; message: string; reply?: string; created_at: number }>>([]);
   const [dmLoading, setDmLoading] = useState(false);
@@ -502,6 +513,82 @@ export default function BoardPage() {
 
   const handleCancelReply = () => { setReplyTo(undefined); setReplyToPost(undefined); };
 
+  // ---- 掲示板スレッド ----
+  const openThread = async (thread: Post) => {
+    setSelectedThread(thread);
+    setBoardView('thread');
+    setThreadLoading(true);
+    try {
+      const res = await fetch(`/api/posts?threadId=${thread.id}`);
+      const data = await res.json();
+      setThreadReplies(data.posts || []);
+    } catch (e) {
+      setThreadReplies([]);
+    } finally {
+      setThreadLoading(false);
+    }
+  };
+
+  const handleCreateThread = async () => {
+    if (!newThreadTitle.trim() || !newThreadContent.trim()) return;
+    const post: Post = {
+      id: `${Date.now()}-${Math.random()}`,
+      content: newThreadContent.trim(),
+      title: newThreadTitle.trim(),
+      type: 'text',
+      created_at: Date.now(),
+      thread_id: null,
+      author_type: 'user',
+      author_id: userId,
+      media_url: null,
+    };
+    const res = await fetch('/api/posts', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(post),
+    });
+    const data = await res.json();
+    if (!res.ok || data.error) {
+      console.error('スレッド作成失敗:', data.error);
+      return;
+    }
+    setNewThreadTitle('');
+    setNewThreadContent('');
+    setShowNewThread(false);
+    await fetchPosts();
+  };
+
+  const handleSendReply = async () => {
+    if (!replyContent.trim() || !selectedThread || replySending) return;
+    setReplySending(true);
+    const post: Post = {
+      id: `${Date.now()}-${Math.random()}`,
+      content: replyContent.trim(),
+      type: 'text',
+      created_at: Date.now(),
+      thread_id: selectedThread.id,
+      author_type: 'user',
+      author_id: userId,
+      media_url: null,
+    };
+    try {
+      await fetch('/api/posts', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(post),
+      });
+      setReplyContent('');
+      // スレッド内を再取得
+      const res = await fetch(`/api/posts?threadId=${selectedThread.id}`);
+      const data = await res.json();
+      setThreadReplies(data.posts || []);
+      // 一覧のreply_countも更新
+      await fetchPosts();
+    } finally {
+      setReplySending(false);
+    }
+  };
+
   const formatTime = (ts: number) => {
     const diff = Date.now() - ts;
     if (diff < 3600000) return `${Math.floor(diff / 60000)}分前`;
@@ -535,7 +622,7 @@ export default function BoardPage() {
             onClick={() => setActiveTab('timeline')}
             className={`flex-1 py-5 text-sm font-black transition-colors ${activeTab === 'timeline' ? 'text-[#58cc02] border-b-2 border-[#58cc02]' : 'text-gray-400'}`}
           >
-            タイムライン
+            📋 掲示板
           </button>
           <button
             onClick={() => setActiveTab('park')}
@@ -552,45 +639,219 @@ export default function BoardPage() {
         </div>
 
         {activeTab === 'timeline' ? (
-          <main className="flex-1 overflow-y-auto pb-36" onScroll={handleTimelineScroll}>
-            <div className="bg-white">
-              {posts.length === 0 ? (
-                <div className="py-20 text-center px-8">
-                  <div className="text-6xl mb-4">📝</div>
-                  <p className="font-black text-gray-700 text-lg mb-2">まだ投稿がありません</p>
-                  <p className="text-gray-400 font-bold text-sm">最初の投稿をしてみよう！</p>
+          boardView === 'thread' && selectedThread ? (
+            /* ===== スレッド詳細 ===== */
+            <div className="flex-1 flex flex-col overflow-hidden">
+              {/* スレッドヘッダー */}
+              <div className="flex-shrink-0 flex items-center gap-3 px-4 py-3 border-b border-gray-100 bg-white">
+                <button onClick={() => { setBoardView('list'); setSelectedThread(null); setThreadReplies([]); }}
+                  className="w-8 h-8 flex items-center justify-center rounded-xl hover:bg-gray-100 transition-colors flex-shrink-0">
+                  <svg className="w-5 h-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M15 19l-7-7 7-7" />
+                  </svg>
+                </button>
+                <div className="flex-1 min-w-0">
+                  <p className="font-black text-gray-800 text-sm truncate">{selectedThread.title || selectedThread.content}</p>
+                  <p className="text-[10px] text-gray-400 font-bold">{threadReplies.length}件の返信</p>
+                </div>
+              </div>
+
+              {/* 投稿一覧 */}
+              <div className="flex-1 overflow-y-auto pb-24">
+                {/* スレッド本文（OP） */}
+                <div className="px-4 py-4 border-b-2 border-gray-100 bg-[#f9fffe]">
+                  <div className="flex items-start gap-3">
+                    {selectedThread.author_type === 'agent' && selectedThread.author_agent_image_url ? (
+                      <img src={selectedThread.author_agent_image_url} alt="" className="w-10 h-10 rounded-2xl object-contain bg-[#fff9e6] border-2 border-[#ffd900] flex-shrink-0" />
+                    ) : selectedThread.author_type === 'user' && selectedThread.author_avatar_url ? (
+                      <img src={selectedThread.author_avatar_url} alt="" className="w-10 h-10 rounded-2xl object-cover flex-shrink-0" />
+                    ) : (
+                      <div className="w-10 h-10 rounded-2xl bg-[#58cc02] flex items-center justify-center text-white font-black text-sm flex-shrink-0">
+                        {selectedThread.author_type === 'agent' ? '🐣' : (selectedThread.author_name || selectedThread.author_id).slice(0, 2).toUpperCase()}
+                      </div>
+                    )}
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 mb-1">
+                        <span className="text-sm font-black text-gray-800">{selectedThread.author_name || (selectedThread.author_type === 'agent' ? 'AIキャラ' : 'ユーザー')}</span>
+                        <span className="text-xs font-black text-[#58cc02] bg-[#f0fff0] px-2 py-0.5 rounded-full">スレ主</span>
+                        <span className="text-[10px] text-gray-400 font-bold">{formatTime(selectedThread.created_at)}</span>
+                      </div>
+                      {selectedThread.title && (
+                        <p className="font-black text-gray-800 text-base mb-2">{selectedThread.title}</p>
+                      )}
+                      <p className="text-sm text-gray-700 leading-relaxed">{selectedThread.content}</p>
+                      {selectedThread.media_url && (
+                        <img src={selectedThread.media_url} alt="" className="mt-3 rounded-2xl max-w-full max-h-64 object-cover" />
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                {/* 返信一覧 */}
+                {threadLoading ? (
+                  <div className="py-12 flex justify-center">
+                    <div className="w-6 h-6 border-2 border-[#58cc02] border-t-transparent rounded-full animate-spin" />
+                  </div>
+                ) : threadReplies.length === 0 ? (
+                  <div className="py-12 text-center">
+                    <p className="text-gray-400 font-bold text-sm">まだ返信がありません</p>
+                    <p className="text-gray-300 font-bold text-xs mt-1">最初の返信をしてみよう</p>
+                  </div>
+                ) : (
+                  <div className="divide-y divide-gray-100">
+                    {threadReplies.map((reply, idx) => (
+                      <div key={reply.id} className="px-4 py-4 flex items-start gap-3 hover:bg-gray-50 transition-colors">
+                        {reply.author_type === 'agent' && reply.author_agent_image_url ? (
+                          <img src={reply.author_agent_image_url} alt="" className="w-8 h-8 rounded-2xl object-contain bg-[#fff9e6] border-2 border-[#ffd900] flex-shrink-0" />
+                        ) : reply.author_type === 'user' && reply.author_avatar_url ? (
+                          <img src={reply.author_avatar_url} alt="" className="w-8 h-8 rounded-2xl object-cover flex-shrink-0" />
+                        ) : (
+                          <div className={`w-8 h-8 rounded-2xl flex items-center justify-center text-white font-black text-xs flex-shrink-0 ${reply.author_type === 'agent' ? 'bg-[#ffd900]' : 'bg-gray-300'}`}>
+                            {reply.author_type === 'agent' ? '🐣' : (reply.author_name || reply.author_id).slice(0, 2).toUpperCase()}
+                          </div>
+                        )}
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 mb-1 flex-wrap">
+                            <span className="text-xs font-black text-gray-700">{reply.author_name || (reply.author_type === 'agent' ? 'AIキャラ' : 'ユーザー')}</span>
+                            <span className="text-[10px] font-black text-gray-400">#{idx + 1}</span>
+                            <span className="text-[10px] text-gray-400 font-bold">{formatTime(reply.created_at)}</span>
+                            {reply.author_id === userId && (
+                              <span className="text-[10px] font-black text-[#58cc02] bg-[#f0fff0] px-1.5 py-0.5 rounded-full">あなた</span>
+                            )}
+                          </div>
+                          <p className="text-sm text-gray-700 leading-relaxed">{reply.content}</p>
+                          {reply.media_url && (
+                            <img src={reply.media_url} alt="" className="mt-2 rounded-xl max-w-full max-h-48 object-cover" />
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* 返信入力欄 */}
+              <div className="fixed bottom-16 left-0 right-0 bg-white border-t border-gray-100 px-4 py-3 max-w-lg mx-auto">
+                <div className="flex gap-2 items-end">
+                  <textarea
+                    value={replyContent}
+                    onChange={e => setReplyContent(e.target.value)}
+                    placeholder="返信を入力..."
+                    rows={2}
+                    className="flex-1 resize-none rounded-2xl border-2 border-gray-200 px-4 py-2.5 text-sm font-semibold text-gray-800 focus:outline-none focus:border-[#58cc02] transition-colors"
+                  />
+                  <button
+                    onClick={handleSendReply}
+                    disabled={!replyContent.trim() || replySending}
+                    className="w-10 h-10 rounded-2xl bg-[#58cc02] flex items-center justify-center flex-shrink-0 disabled:opacity-40 transition-opacity"
+                    style={{ boxShadow: '0 3px 0 #3d8f00' }}
+                  >
+                    {replySending
+                      ? <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                      : <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 12h14M12 5l7 7-7 7" /></svg>
+                    }
+                  </button>
+                </div>
+              </div>
+            </div>
+          ) : (
+            /* ===== スレッド一覧 ===== */
+            <main className="flex-1 overflow-y-auto pb-36" onScroll={handleTimelineScroll}>
+              {/* 新規スレッド作成フォーム */}
+              {showNewThread ? (
+                <div className="mx-4 mt-4 mb-2 bg-white rounded-3xl border-2 border-[#58cc02] p-4 shadow-sm">
+                  <p className="text-xs font-black text-[#58cc02] uppercase tracking-wider mb-3">新しいスレッドを立てる</p>
+                  <input
+                    type="text"
+                    value={newThreadTitle}
+                    onChange={e => setNewThreadTitle(e.target.value)}
+                    placeholder="スレッドのタイトル（お題）"
+                    className="w-full rounded-2xl border-2 border-gray-200 px-4 py-2.5 text-sm font-black text-gray-800 focus:outline-none focus:border-[#58cc02] mb-2 transition-colors"
+                  />
+                  <textarea
+                    value={newThreadContent}
+                    onChange={e => setNewThreadContent(e.target.value)}
+                    placeholder="最初のメッセージ"
+                    rows={3}
+                    className="w-full resize-none rounded-2xl border-2 border-gray-200 px-4 py-2.5 text-sm font-semibold text-gray-800 focus:outline-none focus:border-[#58cc02] mb-3 transition-colors"
+                  />
+                  <div className="flex gap-2">
+                    <button onClick={() => { setShowNewThread(false); setNewThreadTitle(''); setNewThreadContent(''); }}
+                      className="flex-1 py-2.5 rounded-2xl border-2 border-gray-200 text-sm font-black text-gray-500 hover:bg-gray-50 transition-colors">
+                      キャンセル
+                    </button>
+                    <button onClick={handleCreateThread}
+                      disabled={!newThreadTitle.trim() || !newThreadContent.trim()}
+                      className="flex-1 py-2.5 rounded-2xl text-sm font-black text-white disabled:opacity-40 transition-opacity"
+                      style={{ background: 'linear-gradient(135deg, #58cc02, #3d8f00)', boxShadow: '0 3px 0 #2d6a00' }}>
+                      スレッドを立てる
+                    </button>
+                  </div>
                 </div>
               ) : (
-                <>
+                <div className="px-4 pt-4 pb-2">
+                  <button onClick={() => setShowNewThread(true)}
+                    className="w-full py-3 rounded-2xl border-2 border-dashed border-[#58cc02] text-sm font-black text-[#58cc02] hover:bg-[#f0fff0] transition-colors flex items-center justify-center gap-2">
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 4v16m8-8H4" /></svg>
+                    新しいスレッドを立てる
+                  </button>
+                </div>
+              )}
+
+              {/* スレッド一覧 */}
+              {posts.length === 0 ? (
+                <div className="py-20 text-center px-8">
+                  <div className="text-6xl mb-4">📋</div>
+                  <p className="font-black text-gray-700 text-lg mb-2">まだスレッドがありません</p>
+                  <p className="text-gray-400 font-bold text-sm">最初のスレッドを立ててみよう！</p>
+                </div>
+              ) : (
+                <div className="px-4 py-2 space-y-3">
                   {posts.map(post => (
-                    <PostItem
-                      key={post.id}
-                      post={post}
-                      replies={[]}
-                      onReply={handleReply}
-                      currentUserId={userId}
-                      onReactionUpdate={fetchPosts}
-                      onDelete={async (postId) => {
-                        try {
-                          await fetch(`/api/posts?id=${postId}`, { method: 'DELETE' });
-                          await fetchPosts();
-                        } catch (error) {
-                          console.error('Failed to delete post:', error);
-                        }
-                      }}
-                    />
+                    <button key={post.id} onClick={() => openThread(post)}
+                      className="w-full text-left bg-white rounded-3xl border-2 border-gray-100 hover:border-[#58cc02] hover:shadow-md transition-all p-4 active:scale-[0.99]">
+                      {/* タイトル */}
+                      <p className="font-black text-gray-800 text-base leading-snug mb-2 line-clamp-2">
+                        {post.title || post.content}
+                      </p>
+                      {/* 本文プレビュー（タイトルがある場合のみ） */}
+                      {post.title && (
+                        <p className="text-xs text-gray-500 font-semibold leading-relaxed mb-3 line-clamp-2">{post.content}</p>
+                      )}
+                      {/* メタ情報 */}
+                      <div className="flex items-center gap-3">
+                        {/* アバター */}
+                        {post.author_type === 'agent' && post.author_agent_image_url ? (
+                          <img src={post.author_agent_image_url} alt="" className="w-6 h-6 rounded-xl object-contain bg-[#fff9e6] border border-[#ffd900] flex-shrink-0" />
+                        ) : post.author_type === 'user' && post.author_avatar_url ? (
+                          <img src={post.author_avatar_url} alt="" className="w-6 h-6 rounded-xl object-cover flex-shrink-0" />
+                        ) : (
+                          <div className={`w-6 h-6 rounded-xl flex items-center justify-center text-white font-black text-[10px] flex-shrink-0 ${post.author_type === 'agent' ? 'bg-[#ffd900]' : 'bg-[#58cc02]'}`}>
+                            {post.author_type === 'agent' ? '🐣' : (post.author_name || post.author_id).slice(0, 2).toUpperCase()}
+                          </div>
+                        )}
+                        <span className="text-[11px] font-black text-gray-600 truncate max-w-[80px]">{post.author_name || (post.author_type === 'agent' ? 'AIキャラ' : 'ユーザー')}</span>
+                        <span className="text-[11px] text-gray-400 font-bold flex-shrink-0">{formatTime(post.created_at)}</span>
+                        <div className="flex-1" />
+                        <div className="flex items-center gap-1 text-[11px] font-black text-gray-400">
+                          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" /></svg>
+                          <span>{post.reply_count ?? 0}</span>
+                        </div>
+                        <svg className="w-4 h-4 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M9 5l7 7-7 7" /></svg>
+                      </div>
+                    </button>
                   ))}
-                  <div className="py-6 flex justify-center">
+                  <div className="py-4 flex justify-center">
                     {loadingMore ? (
-                      <div className="w-8 h-8 border-[3px] border-[#58cc02] border-t-transparent rounded-full animate-spin" />
+                      <div className="w-6 h-6 border-[3px] border-[#58cc02] border-t-transparent rounded-full animate-spin" />
                     ) : !hasMore && posts.length > 0 ? (
                       <p className="text-xs font-bold text-gray-300">すべて読み込みました</p>
                     ) : null}
                   </div>
-                </>
+                </div>
               )}
-            </div>
-          </main>
+            </main>
+          )
         ) : activeTab === 'dm' ? (
           dmView === 'list' ? (
             /* キャラ一覧 */
@@ -1106,21 +1367,6 @@ export default function BoardPage() {
           </main>
         )}
       </div>
-
-      {/* 投稿入力欄: フッター(fixed bottom-0, h-16)の真上に固定 */}
-      {activeTab === 'timeline' && (
-        <div className="fixed bottom-16 left-0 right-0 z-40 bg-white border-t-2 border-gray-100">
-          <div className="max-w-lg mx-auto">
-            <PostInput
-              onPost={handlePost}
-              replyTo={replyTo}
-              replyToPost={replyToPost}
-              onCancel={handleCancelReply}
-              placeholder={replyTo ? '返信を入力...' : 'いま、思ったこと'}
-            />
-          </div>
-        </div>
-      )}
 
       <FooterNav />
     </div>

@@ -19,7 +19,29 @@ export async function GET(request: NextRequest) {
         .eq('thread_id', threadId)
         .order('created_at', { ascending: true });
       if (error) throw error;
-      return NextResponse.json({ posts: data || [] });
+      const replies = data || [];
+
+      // 著者情報を付加
+      const userIds = replies.filter(p => p.author_type === 'user').map(p => p.author_id);
+      const agentIds = replies.filter(p => p.author_type === 'agent').map(p => p.author_id);
+      const infoMap = new Map<string, { name: string; avatar_url: string | null; agent_image_url: string | null }>();
+
+      if (userIds.length > 0) {
+        const { data: users } = await serverSupabase.from('users').select('id, display_name, avatar_url').in('id', [...new Set(userIds)]);
+        (users || []).forEach(u => infoMap.set(u.id, { name: u.display_name || 'ユーザー', avatar_url: u.avatar_url || null, agent_image_url: null }));
+      }
+      if (agentIds.length > 0) {
+        const { data: agents } = await serverSupabase.from('agents').select('user_id, name, character_image_url').in('user_id', [...new Set(agentIds)]);
+        (agents || []).forEach(a => infoMap.set(a.user_id, { name: a.name || 'AIキャラ', avatar_url: null, agent_image_url: a.character_image_url || null }));
+      }
+
+      const enriched = replies.map(p => ({
+        ...p,
+        author_name: infoMap.get(p.author_id)?.name || (p.author_type === 'agent' ? 'AIキャラ' : 'ユーザー'),
+        author_avatar_url: infoMap.get(p.author_id)?.avatar_url || null,
+        author_agent_image_url: infoMap.get(p.author_id)?.agent_image_url || null,
+      }));
+      return NextResponse.json({ posts: enriched });
     }
 
     let query = serverSupabase
@@ -74,13 +96,66 @@ export async function GET(request: NextRequest) {
     }
 
     const filtered = pagePosts.filter(post => {
+      // 自分の投稿は常に表示
+      if (post.author_id === userId) return true;
       if (myAgentUserId && post.author_id === myAgentUserId) return true;
+      // agentは名前があれば表示
       if (post.author_type === 'agent') return agentNameMap.get(post.author_id) === true;
-      if (post.author_type === 'user') return userNameMap.get(post.author_id) === true;
+      // userはdisplay_nameがなくても表示（掲示板は全員参加）
+      if (post.author_type === 'user') return true;
       return true;
     });
 
-    return NextResponse.json({ posts: filtered, hasMore });
+    // reply_count を集計
+    const postIds = filtered.map(p => p.id);
+    let replyCountMap = new Map<string, number>();
+    if (postIds.length > 0) {
+      const { data: replyCounts } = await serverSupabase
+        .from('posts')
+        .select('thread_id')
+        .in('thread_id', postIds);
+      (replyCounts || []).forEach(r => {
+        replyCountMap.set(r.thread_id, (replyCountMap.get(r.thread_id) || 0) + 1);
+      });
+    }
+
+    // 著者情報を一括取得して付加
+    const allAuthorUserIds = [...new Set(filtered.map(p => p.author_id))];
+    const authorInfoMap = new Map<string, { name: string; avatar_url: string | null; agent_image_url: string | null }>();
+
+    // userタイプの著者
+    const userAuthorIds = filtered.filter(p => p.author_type === 'user').map(p => p.author_id);
+    if (userAuthorIds.length > 0) {
+      const { data: userProfiles } = await serverSupabase
+        .from('users')
+        .select('id, display_name, avatar_url')
+        .in('id', [...new Set(userAuthorIds)]);
+      (userProfiles || []).forEach(u => {
+        authorInfoMap.set(u.id, { name: u.display_name || `ユーザー`, avatar_url: u.avatar_url || null, agent_image_url: null });
+      });
+    }
+
+    // agentタイプの著者（user_idで検索）
+    const agentAuthorIds = filtered.filter(p => p.author_type === 'agent').map(p => p.author_id);
+    if (agentAuthorIds.length > 0) {
+      const { data: agentProfiles } = await serverSupabase
+        .from('agents')
+        .select('user_id, name, character_image_url, appearance_stage')
+        .in('user_id', [...new Set(agentAuthorIds)]);
+      (agentProfiles || []).forEach(a => {
+        authorInfoMap.set(a.user_id, { name: a.name || 'AIキャラ', avatar_url: null, agent_image_url: a.character_image_url || null });
+      });
+    }
+
+    const postsWithCount = filtered.map(p => ({
+      ...p,
+      reply_count: replyCountMap.get(p.id) || 0,
+      author_name: authorInfoMap.get(p.author_id)?.name || (p.author_type === 'agent' ? 'AIキャラ' : 'ユーザー'),
+      author_avatar_url: authorInfoMap.get(p.author_id)?.avatar_url || null,
+      author_agent_image_url: authorInfoMap.get(p.author_id)?.agent_image_url || null,
+    }));
+
+    return NextResponse.json({ posts: postsWithCount, hasMore });
   } catch (error) {
     console.error('Failed to fetch posts:', error);
     return NextResponse.json({ posts: [], hasMore: false }, { status: 500 });
@@ -107,22 +182,53 @@ export async function POST(request: NextRequest) {
           last_seen: Date.now(),
         }]);
     } else {
-      // 最終アクセス時刻を更新
       await supabase
         .from('users')
         .update({ last_seen: Date.now() })
         .eq('id', post.author_id);
     }
 
+    // titleカラムが存在しない場合に備えてtitleなしでも試みる
+    const insertPayload: Record<string, unknown> = {
+      id: post.id,
+      content: post.content,
+      type: post.type,
+      created_at: post.created_at,
+      thread_id: post.thread_id ?? null,
+      author_type: post.author_type,
+      author_id: post.author_id,
+      media_url: post.media_url ?? null,
+    };
+    if (post.title) insertPayload.title = post.title;
+
     const { data, error } = await supabase
       .from('posts')
-      .insert([post])
+      .insert([insertPayload])
       .select()
       .single();
 
-    if (error) throw error;
+    if (error) {
+      // titleカラムがない場合はtitleなしで再試行
+      if (error.message?.includes('title') || error.code === '42703') {
+        delete insertPayload.title;
+        const { data: data2, error: error2 } = await supabase
+          .from('posts')
+          .insert([insertPayload])
+          .select()
+          .single();
+        if (error2) throw error2;
+        await supabase.from('logs').insert([{
+          event_type: post.thread_id ? 'reply' : 'post',
+          user_id: post.author_id,
+          post_id: post.id,
+          metadata: { author_type: post.author_type, type: post.type },
+          created_at: Date.now(),
+        }]);
+        return NextResponse.json({ success: true, post: data2 });
+      }
+      throw error;
+    }
 
-    // ログを記録
     await supabase.from('logs').insert([{
       event_type: post.thread_id ? 'reply' : 'post',
       user_id: post.author_id,

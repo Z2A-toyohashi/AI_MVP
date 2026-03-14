@@ -8,6 +8,11 @@ export interface Post {
   author_type: 'user' | 'ai' | 'agent';
   author_id: string;
   media_url: string | null;
+  title?: string | null;
+  reply_count?: number;
+  author_name?: string;
+  author_avatar_url?: string | null;
+  author_agent_image_url?: string | null;
 }
 
 // ログの型定義
