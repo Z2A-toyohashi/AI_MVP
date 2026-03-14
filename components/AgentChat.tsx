@@ -78,16 +78,16 @@ export default function AgentChat({ agent, onLevelUp }: Props) {
       const res = await fetch(`/api/conversations?agentId=${agent.id}`);
       if (!res.ok) {
         console.error('fetchMessages failed:', res.status);
-        return; // 失敗時は既存のmessagesを維持
+        return;
       }
       const data = await res.json();
       if (Array.isArray(data)) {
         setMessages(data);
+        // 既読にする
+        fetch(`/api/conversations?agentId=${agent.id}&markRead=true`, { method: 'PATCH' }).catch(() => {});
       }
-      // dataが配列でない（エラーオブジェクト等）場合は既存を維持
     } catch (e) {
       console.error('fetchMessages error:', e);
-      // エラー時は既存のmessagesを維持（setMessagesを呼ばない）
     }
   };
 

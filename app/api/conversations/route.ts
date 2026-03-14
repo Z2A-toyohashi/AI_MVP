@@ -22,6 +22,17 @@ export async function GET(request: NextRequest) {
     }
 
     const supabase = getServerSupabase();
+
+    // 未読カウントモード
+    if (request.nextUrl.searchParams.get('unreadCount') === 'true') {
+      const { count } = await supabase
+        .from('conversations')
+        .select('*', { count: 'exact', head: true })
+        .eq('agent_id', agentId)
+        .in('role', ['ai', 'assistant'])
+        .eq('is_read', false);
+      return NextResponse.json({ unreadCount: count || 0 });
+    }
     // 最新100件を降順で取得してから昇順に並び替え（最新が一番下に来るように）
     const { data, error } = await supabase
       .from('conversations')
@@ -527,5 +538,23 @@ async function generateCharacterImage(supabase: any, agentId: string, personalit
   } catch (error) {
     console.error('Error generating character image:', error);
     throw error;
+  }
+}
+
+// 既読化
+export async function PATCH(request: NextRequest) {
+  try {
+    const agentId = request.nextUrl.searchParams.get('agentId');
+    if (!agentId) return NextResponse.json({ error: 'agentId required' }, { status: 400 });
+    const supabase = getServerSupabase();
+    await supabase
+      .from('conversations')
+      .update({ is_read: true })
+      .eq('agent_id', agentId)
+      .in('role', ['ai', 'assistant'])
+      .eq('is_read', false);
+    return NextResponse.json({ ok: true });
+  } catch (error) {
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }

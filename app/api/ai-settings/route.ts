@@ -43,6 +43,8 @@ export async function PUT(request: NextRequest) {
       'gpt_temperature',
       'gpt_presence_penalty',
       'gpt_frequency_penalty',
+      'board_post_frequency',
+      'board_reply_probability',
     ];
 
     allowedFields.forEach(field => {

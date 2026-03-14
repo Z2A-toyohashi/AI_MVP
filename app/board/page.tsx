@@ -678,6 +678,20 @@ export default function BoardPage() {
     }
   };
 
+  const handleDeleteReply = async (replyId: string) => {
+    if (!confirm('この返信を削除しますか？')) return;
+    try {
+      const res = await fetch(`/api/posts?id=${replyId}&userId=${userId}`, { method: 'DELETE' });
+      if (res.ok) {
+        setThreadReplies(prev => prev.filter(r => r.id !== replyId));
+      } else {
+        const data = await res.json();
+        alert(data.error || '削除に失敗しました');
+      }
+    } catch (e) {
+      console.error('Delete reply failed:', e);
+    }
+  };
   const formatTime = (ts: number) => {
     const diff = Date.now() - ts;
     if (diff < 3600000) return `${Math.floor(diff / 60000)}分前`;
@@ -818,6 +832,17 @@ export default function BoardPage() {
                             <span className="text-[10px] text-gray-400 font-bold">{formatTime(reply.created_at)}</span>
                             {reply.author_id === userId && (
                               <span className="text-[10px] font-black text-[#58cc02] bg-[#f0fff0] px-1.5 py-0.5 rounded-full">あなた</span>
+                            )}
+                            {reply.author_id === userId && (
+                              <button
+                                onClick={() => handleDeleteReply(reply.id)}
+                                className="ml-auto w-6 h-6 flex items-center justify-center rounded-lg hover:bg-red-50 transition-colors"
+                                title="返信を削除"
+                              >
+                                <svg className="w-3.5 h-3.5 text-red-300 hover:text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                                </svg>
+                              </button>
                             )}
                           </div>
                           <p className="text-sm text-gray-700 leading-relaxed"><LinkedText text={reply.content} /></p>
