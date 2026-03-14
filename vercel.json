@@ -23,6 +23,14 @@
     {
       "path": "/api/batch/agent-dm",
       "schedule": "0 9 * * *"
+    },
+    {
+      "path": "/api/batch/agent-board",
+      "schedule": "0 */6 * * *"
+    },
+    {
+      "path": "/api/batch/news-thread",
+      "schedule": "0 8 * * *"
     }
   ]
 }

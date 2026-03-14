@@ -68,6 +68,14 @@ export default function BoardPage() {
   const [newThreadContent, setNewThreadContent] = useState('');
   const [replyContent, setReplyContent] = useState('');
   const [replySending, setReplySending] = useState(false);
+  const [replyImageFile, setReplyImageFile] = useState<File | null>(null);
+  const [replyImagePreview, setReplyImagePreview] = useState<string | null>(null);
+  const [replyUploading, setReplyUploading] = useState(false);
+  const replyFileInputRef = useRef<HTMLInputElement>(null);
+  const [newThreadImageFile, setNewThreadImageFile] = useState<File | null>(null);
+  const [newThreadImagePreview, setNewThreadImagePreview] = useState<string | null>(null);
+  const [newThreadUploading, setNewThreadUploading] = useState(false);
+  const newThreadFileInputRef = useRef<HTMLInputElement>(null);
 
   // DM状態
   const [dms, setDms] = useState<Array<{ id: string; from_agent_name: string; to_agent_name: string; message: string; reply?: string; created_at: number }>>([]);
@@ -531,16 +539,36 @@ export default function BoardPage() {
 
   const handleCreateThread = async () => {
     if (!newThreadTitle.trim() || !newThreadContent.trim()) return;
+
+    let mediaUrl: string | null = null;
+    if (newThreadImageFile) {
+      setNewThreadUploading(true);
+      const formData = new FormData();
+      formData.append('image', newThreadImageFile);
+      try {
+        let res = await fetch('/api/upload-supabase', { method: 'POST', body: formData });
+        if (!res.ok) res = await fetch('/api/upload', { method: 'POST', body: formData });
+        if (res.ok) {
+          const data = await res.json();
+          mediaUrl = data.url;
+        }
+      } catch (e) {
+        console.error('Image upload failed:', e);
+      } finally {
+        setNewThreadUploading(false);
+      }
+    }
+
     const post: Post = {
       id: `${Date.now()}-${Math.random()}`,
       content: newThreadContent.trim(),
       title: newThreadTitle.trim(),
-      type: 'text',
+      type: mediaUrl ? 'image' : 'text',
       created_at: Date.now(),
       thread_id: null,
       author_type: 'user',
       author_id: userId,
-      media_url: null,
+      media_url: mediaUrl,
     };
     const res = await fetch('/api/posts', {
       method: 'POST',
@@ -555,21 +583,43 @@ export default function BoardPage() {
     setNewThreadTitle('');
     setNewThreadContent('');
     setShowNewThread(false);
+    setNewThreadImageFile(null);
+    setNewThreadImagePreview(null);
     await fetchPosts();
   };
 
   const handleSendReply = async () => {
-    if (!replyContent.trim() || !selectedThread || replySending) return;
+    if (!replyContent.trim() && !replyImageFile || !selectedThread || replySending) return;
     setReplySending(true);
+
+    let mediaUrl: string | null = null;
+    if (replyImageFile) {
+      setReplyUploading(true);
+      const formData = new FormData();
+      formData.append('image', replyImageFile);
+      try {
+        let res = await fetch('/api/upload-supabase', { method: 'POST', body: formData });
+        if (!res.ok) res = await fetch('/api/upload', { method: 'POST', body: formData });
+        if (res.ok) {
+          const data = await res.json();
+          mediaUrl = data.url;
+        }
+      } catch (e) {
+        console.error('Reply image upload failed:', e);
+      } finally {
+        setReplyUploading(false);
+      }
+    }
+
     const post: Post = {
       id: `${Date.now()}-${Math.random()}`,
       content: replyContent.trim(),
-      type: 'text',
+      type: mediaUrl ? 'image' : 'text',
       created_at: Date.now(),
       thread_id: selectedThread.id,
       author_type: 'user',
       author_id: userId,
-      media_url: null,
+      media_url: mediaUrl,
     };
     try {
       await fetch('/api/posts', {
@@ -578,6 +628,8 @@ export default function BoardPage() {
         body: JSON.stringify(post),
       });
       setReplyContent('');
+      setReplyImageFile(null);
+      setReplyImagePreview(null);
       // スレッド内を再取得
       const res = await fetch(`/api/posts?threadId=${selectedThread.id}`);
       const data = await res.json();
@@ -586,6 +638,24 @@ export default function BoardPage() {
       await fetchPosts();
     } finally {
       setReplySending(false);
+    }
+  };
+
+  const handleDeleteThread = async (postId: string, authorId: string) => {
+    if (!confirm('このスレッドを削除しますか？返信もすべて削除されます。')) return;
+    try {
+      const res = await fetch(`/api/posts?id=${postId}&userId=${userId}`, { method: 'DELETE' });
+      if (res.ok) {
+        setBoardView('list');
+        setSelectedThread(null);
+        setThreadReplies([]);
+        await fetchPosts();
+      } else {
+        const data = await res.json();
+        alert(data.error || '削除に失敗しました');
+      }
+    } catch (e) {
+      console.error('Delete failed:', e);
     }
   };
 
@@ -654,6 +724,18 @@ export default function BoardPage() {
                   <p className="font-black text-gray-800 text-sm truncate">{selectedThread.title || selectedThread.content}</p>
                   <p className="text-[10px] text-gray-400 font-bold">{threadReplies.length}件の返信</p>
                 </div>
+                {/* 投稿主のみ削除ボタン表示 */}
+                {selectedThread.author_id === userId && (
+                  <button
+                    onClick={() => handleDeleteThread(selectedThread.id, selectedThread.author_id)}
+                    className="w-8 h-8 flex items-center justify-center rounded-xl hover:bg-red-50 transition-colors flex-shrink-0"
+                    title="スレッドを削除"
+                  >
+                    <svg className="w-4 h-4 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                    </svg>
+                  </button>
+                )}
               </div>
 
               {/* 投稿一覧 */}
@@ -732,7 +814,39 @@ export default function BoardPage() {
 
               {/* 返信入力欄 */}
               <div className="fixed bottom-16 left-0 right-0 bg-white border-t border-gray-100 px-4 py-3 max-w-lg mx-auto">
+                {replyImagePreview && (
+                  <div className="mb-2 relative inline-block">
+                    <img src={replyImagePreview} alt="" className="h-16 rounded-xl object-cover" />
+                    <button
+                      onClick={() => { setReplyImageFile(null); setReplyImagePreview(null); if (replyFileInputRef.current) replyFileInputRef.current.value = ''; }}
+                      className="absolute -top-1 -right-1 w-5 h-5 bg-red-500 rounded-full flex items-center justify-center"
+                    >
+                      <svg className="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M6 18L18 6M6 6l12 12" /></svg>
+                    </button>
+                  </div>
+                )}
                 <div className="flex gap-2 items-end">
+                  <input
+                    ref={replyFileInputRef}
+                    type="file"
+                    accept="image/*"
+                    className="hidden"
+                    onChange={e => {
+                      const file = e.target.files?.[0];
+                      if (file) {
+                        setReplyImageFile(file);
+                        const reader = new FileReader();
+                        reader.onload = () => setReplyImagePreview(reader.result as string);
+                        reader.readAsDataURL(file);
+                      }
+                    }}
+                  />
+                  <button
+                    onClick={() => replyFileInputRef.current?.click()}
+                    className="w-10 h-10 rounded-2xl border-2 border-gray-200 flex items-center justify-center flex-shrink-0 hover:border-[#58cc02] transition-colors"
+                  >
+                    <svg className="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
+                  </button>
                   <textarea
                     value={replyContent}
                     onChange={e => setReplyContent(e.target.value)}
@@ -742,11 +856,11 @@ export default function BoardPage() {
                   />
                   <button
                     onClick={handleSendReply}
-                    disabled={!replyContent.trim() || replySending}
+                    disabled={(!replyContent.trim() && !replyImageFile) || replySending || replyUploading}
                     className="w-10 h-10 rounded-2xl bg-[#58cc02] flex items-center justify-center flex-shrink-0 disabled:opacity-40 transition-opacity"
                     style={{ boxShadow: '0 3px 0 #3d8f00' }}
                   >
-                    {replySending
+                    {replySending || replyUploading
                       ? <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
                       : <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 12h14M12 5l7 7-7 7" /></svg>
                     }
@@ -775,16 +889,52 @@ export default function BoardPage() {
                     rows={3}
                     className="w-full resize-none rounded-2xl border-2 border-gray-200 px-4 py-2.5 text-sm font-semibold text-gray-800 focus:outline-none focus:border-[#58cc02] mb-3 transition-colors"
                   />
+                  {/* 画像アップロード */}
+                  <input
+                    ref={newThreadFileInputRef}
+                    type="file"
+                    accept="image/*"
+                    className="hidden"
+                    onChange={e => {
+                      const file = e.target.files?.[0];
+                      if (file) {
+                        setNewThreadImageFile(file);
+                        const reader = new FileReader();
+                        reader.onload = () => setNewThreadImagePreview(reader.result as string);
+                        reader.readAsDataURL(file);
+                      }
+                    }}
+                  />
+                  {newThreadImagePreview && (
+                    <div className="mb-3 relative inline-block">
+                      <img src={newThreadImagePreview} alt="" className="h-24 rounded-2xl object-cover" />
+                      <button
+                        onClick={() => { setNewThreadImageFile(null); setNewThreadImagePreview(null); if (newThreadFileInputRef.current) newThreadFileInputRef.current.value = ''; }}
+                        className="absolute -top-1 -right-1 w-5 h-5 bg-red-500 rounded-full flex items-center justify-center"
+                      >
+                        <svg className="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M6 18L18 6M6 6l12 12" /></svg>
+                      </button>
+                    </div>
+                  )}
+                  <div className="flex gap-2 mb-3">
+                    <button
+                      onClick={() => newThreadFileInputRef.current?.click()}
+                      className="flex items-center gap-1.5 px-3 py-2 rounded-xl border-2 border-gray-200 text-xs font-black text-gray-500 hover:border-[#58cc02] hover:text-[#58cc02] transition-colors"
+                    >
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
+                      画像を追加
+                    </button>
+                  </div>
                   <div className="flex gap-2">
-                    <button onClick={() => { setShowNewThread(false); setNewThreadTitle(''); setNewThreadContent(''); }}
+                    <button onClick={() => { setShowNewThread(false); setNewThreadTitle(''); setNewThreadContent(''); setNewThreadImageFile(null); setNewThreadImagePreview(null); }}
                       className="flex-1 py-2.5 rounded-2xl border-2 border-gray-200 text-sm font-black text-gray-500 hover:bg-gray-50 transition-colors">
                       キャンセル
                     </button>
                     <button onClick={handleCreateThread}
-                      disabled={!newThreadTitle.trim() || !newThreadContent.trim()}
+                      disabled={!newThreadTitle.trim() || !newThreadContent.trim() || newThreadUploading}
                       className="flex-1 py-2.5 rounded-2xl text-sm font-black text-white disabled:opacity-40 transition-opacity"
                       style={{ background: 'linear-gradient(135deg, #58cc02, #3d8f00)', boxShadow: '0 3px 0 #2d6a00' }}>
-                      スレッドを立てる
+                      {newThreadUploading ? 'アップロード中...' : 'スレッドを立てる'}
                     </button>
                   </div>
                 </div>
@@ -831,6 +981,9 @@ export default function BoardPage() {
                           </div>
                         )}
                         <span className="text-[11px] font-black text-gray-600 truncate max-w-[80px]">{post.author_name || (post.author_type === 'agent' ? 'AIキャラ' : 'ユーザー')}</span>
+                        {(post as any).source_tag === 'news' && (
+                          <span className="text-[10px] font-black text-white bg-blue-400 px-1.5 py-0.5 rounded-full flex-shrink-0">📰 ニュース</span>
+                        )}
                         <span className="text-[11px] text-gray-400 font-bold flex-shrink-0">{formatTime(post.created_at)}</span>
                         <div className="flex-1" />
                         <div className="flex items-center gap-1 text-[11px] font-black text-gray-400">

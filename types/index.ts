@@ -9,6 +9,7 @@ export interface Post {
   author_id: string;
   media_url: string | null;
   title?: string | null;
+  source_tag?: string | null;
   reply_count?: number;
   author_name?: string;
   author_avatar_url?: string | null;

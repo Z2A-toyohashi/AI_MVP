@@ -248,12 +248,31 @@ export async function DELETE(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
     const postId = searchParams.get('id');
+    const requesterId = searchParams.get('userId'); // 削除要求者のユーザーID
 
     if (!postId) {
       return NextResponse.json({ error: 'Post ID required' }, { status: 400 });
     }
 
-    // 投稿を削除（返信も一緒に削除される場合はカスケード設定が必要）
+    // 投稿主の確認（userIdが指定されている場合のみ検証）
+    if (requesterId) {
+      const { data: post } = await supabase
+        .from('posts')
+        .select('author_id, author_type')
+        .eq('id', postId)
+        .single();
+
+      if (!post) {
+        return NextResponse.json({ error: 'Post not found' }, { status: 404 });
+      }
+
+      // 投稿主のみ削除可能（userタイプの場合はauthor_idがuserId、agentタイプの場合はauthor_idがagentのuser_id）
+      if (post.author_id !== requesterId) {
+        return NextResponse.json({ error: 'Forbidden: only the author can delete this post' }, { status: 403 });
+      }
+    }
+
+    // 投稿を削除（ON DELETE CASCADEで返信も削除される）
     const { error } = await supabase
       .from('posts')
       .delete()
