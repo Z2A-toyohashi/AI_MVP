@@ -302,7 +302,7 @@ async function updateAgentProgress(supabase: any, agentId: string, agent: any, c
       });
     }
 
-    // 進化の軌跡に記録
+    // 進化の軌跡に記録（現時点の画像URLも保存）
     const stageEmojis = ['🥚','🐣','🐥','🐤','🦜'];
     const stageLabel = stageEmojis[appearanceStage - 1] || '🥚';
     supabase.from('agent_evolution_history').insert({
@@ -311,6 +311,7 @@ async function updateAgentProgress(supabase: any, agentId: string, agent: any, c
       appearance_stage: appearanceStage,
       stage_label: stageLabel,
       evolved: appearanceStage > oldStage,
+      character_image_url: agent.character_image_url || null,
       created_at: Date.now(),
     }).then(() => {}).catch(() => {});
   }
@@ -534,6 +535,22 @@ async function generateCharacterImage(supabase: any, agentId: string, personalit
     const publicUrl = urlData.publicUrl;
 
     await supabase.from('agents').update({ character_image_url: publicUrl }).eq('id', agentId);
+
+    // 進化の軌跡の最新エントリにも画像URLを反映
+    const { data: latestEntry } = await supabase
+      .from('agent_evolution_history')
+      .select('id')
+      .eq('agent_id', agentId)
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .single();
+    if (latestEntry?.id) {
+      await supabase
+        .from('agent_evolution_history')
+        .update({ character_image_url: publicUrl })
+        .eq('id', latestEntry.id);
+    }
+
     console.log('Character image generated:', publicUrl);
   } catch (error) {
     console.error('Error generating character image:', error);

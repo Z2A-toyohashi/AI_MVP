@@ -55,7 +55,7 @@ async function getGlobalSystemPrompt(): Promise<string> {
 export async function generateAIResponse(agent: any, userMessage: string, history: {role: string, content: string}[] = [], imageBase64?: string): Promise<string> {
   const personality = agent.personality || { positive: 0, talkative: 0, curious: 0 };
   const globalPrompt = await getGlobalSystemPrompt();
-  const systemPrompt = buildSystemPrompt(globalPrompt, personality, agent.level, agent.name);
+  const systemPrompt = buildSystemPrompt(globalPrompt, personality, agent.level, agent.name, agent.dynamic_persona);
 
   try {
     // 直近10件の履歴をOpenAI形式に変換
@@ -93,7 +93,7 @@ export async function generateAIResponse(agent: any, userMessage: string, histor
   }
 }
 
-function buildSystemPrompt(globalPrompt: string, personality: any, level: number, name: string = 'AI'): string {
+function buildSystemPrompt(globalPrompt: string, personality: any, level: number, name: string = 'AI', dynamicPersona?: string): string {
   const { 
     positive = 0, 
     talkative = 0, 
@@ -166,6 +166,7 @@ ${understandingBehavior}
 
 性格: ${personalityDesc || '普通'}
 
+${dynamicPersona ? `## あなたの個性（会話から形成されたもの）\n${dynamicPersona}\n` : ''}
 絶対ルール:
 - 返答は1〜3文で短く
 - 絵文字は使わない

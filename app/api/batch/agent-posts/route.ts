@@ -233,15 +233,21 @@ async function generatePersonalPost(agent: any, knowledge: any[], conversations:
     ? `最近の会話:\n${conversations.slice(0, 5).map((c: any) => `${c.role}: ${c.content}`).join('\n')}`
     : '';
 
+  const personaSection = agent.dynamic_persona
+    ? `## あなたの個性（会話から形成されたもの）\n${agent.dynamic_persona}`
+    : '';
+
   const systemPrompt = `あなたは「${agent.name}」という、主人（ユーザー）の第二の自分のような存在です。
 主人のことを一番理解していて、主人と同じような考え方をします。
 
 性格: ポジティブ度${personality.positive || 0} おしゃべり度${personality.talkative || 0} 好奇心${personality.curious || 0} 創造性${personality.creative || 0}
 
+${personaSection}
+
 ${knowledgeContext}
 ${conversationContext}
 
-掲示板に投稿してください。主人との会話を参照し、個人的で具体的な内容を50文字以内で。絵文字なし。`;
+掲示板に投稿してください。あなたらしい口調・思想で、主人との会話を参照した個人的で具体的な内容を50文字以内で。絵文字なし。`;
 
   try {
     const completion = await openai.chat.completions.create({

@@ -15,6 +15,8 @@ interface Agent {
   appearance_stage: number;
   character_image_url?: string;
   can_post_to_sns?: boolean;
+  dynamic_persona?: string;
+  persona_updated_at?: number;
 }
 
 interface EvolutionEntry {
@@ -23,6 +25,7 @@ interface EvolutionEntry {
   appearance_stage: number;
   stage_label: string;
   evolved: boolean;
+  character_image_url?: string;
   created_at: number;
 }
 
@@ -139,6 +142,7 @@ export default function AgentPage() {
   const [mindNodes, setMindNodes] = useState<MindNode[]>([]);
   const [loadingMind, setLoadingMind] = useState(false);
   const [showMind, setShowMind] = useState(false);
+  const [updatingPersona, setUpdatingPersona] = useState(false);
 
   useEffect(() => { initAgent(); }, []);
 
@@ -151,6 +155,23 @@ export default function AgentPage() {
       if (data?.id) setAgent(data);
     } catch (e) { console.error(e); }
     finally { setLoading(false); }
+  };
+
+  const handleUpdatePersona = async () => {
+    if (!agent) return;
+    setUpdatingPersona(true);
+    try {
+      const res = await fetch('/api/batch/update-persona', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ agentId: agent.id }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setAgent(prev => prev ? { ...prev, dynamic_persona: data.persona, persona_updated_at: Date.now() } : prev);
+      }
+    } catch (e) { console.error(e); }
+    finally { setUpdatingPersona(false); }
   };
 
   const handleSaveName = async () => {
@@ -309,13 +330,44 @@ export default function AgentPage() {
 
           <div className="mx-4 mt-3 grid grid-cols-2 gap-2 mb-4">
             <button onClick={handleOpenMind}
-              className="py-3 rounded-2xl border-2 border-[#ce82ff] bg-[#faf0ff] text-sm font-black text-gray-700 hover:bg-[#f3e0ff] transition-colors flex items-center justify-center gap-2">
+              className="py-3.5 rounded-2xl text-sm font-black text-white flex items-center justify-center gap-2 active:scale-95 transition-transform"
+              style={{ background: 'linear-gradient(135deg, #ce82ff, #a855f7)', boxShadow: '0 4px 0 #7c3aed' }}>
               <span>🧠</span><span>頭の中を見る</span>
             </button>
             <button onClick={handleOpenEvolution}
-              className="py-3 rounded-2xl border-2 border-[#ffd900] bg-[#fff9e6] text-sm font-black text-gray-700 hover:bg-[#fff3cc] transition-colors flex items-center justify-center gap-2">
+              className="py-3.5 rounded-2xl text-sm font-black flex items-center justify-center gap-2 active:scale-95 transition-transform"
+              style={{ background: 'linear-gradient(135deg, #ffd900, #ffb800)', boxShadow: '0 4px 0 #d97706', color: '#78350f' }}>
               <span>✨</span><span>進化の軌跡</span>
             </button>
+          </div>
+
+          {/* キャラの個性セクション */}
+          <div className="mx-4 mb-3 rounded-2xl border-2 border-[#ce82ff] bg-[#faf0ff] p-4">
+            <div className="flex items-center justify-between mb-2">
+              <p className="text-xs font-black text-[#a855f7] uppercase tracking-wider">🧬 キャラの個性</p>
+              <button
+                onClick={handleUpdatePersona}
+                disabled={updatingPersona}
+                className="text-[10px] font-black text-[#a855f7] bg-white border border-[#ce82ff] px-2 py-1 rounded-lg disabled:opacity-50 transition-opacity"
+              >
+                {updatingPersona ? '更新中...' : '↻ 更新'}
+              </button>
+            </div>
+            {agent.dynamic_persona ? (
+              <>
+                <p className="text-xs font-bold text-gray-700 leading-relaxed">{agent.dynamic_persona}</p>
+                {agent.persona_updated_at && (
+                  <p className="text-[10px] text-gray-400 font-bold mt-2">
+                    最終更新: {new Date(agent.persona_updated_at).toLocaleDateString('ja-JP', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                  </p>
+                )}
+              </>
+            ) : (
+              <div className="text-center py-3">
+                <p className="text-xs font-bold text-gray-400">まだ個性が形成されていません</p>
+                <p className="text-[10px] text-gray-300 font-bold mt-1">もっと話しかけると個性が育ちます</p>
+              </div>
+            )}
           </div>
 
           <div className="mx-4 mb-4 rounded-2xl bg-gray-50 border-2 border-gray-100 p-4">
@@ -405,7 +457,15 @@ export default function AgentPage() {
                   <div className="absolute left-5 top-0 bottom-0 w-0.5 bg-gray-100" />
                   {evolutionHistory.map((entry, i) => (
                     <div key={entry.id || i} className="flex items-start gap-3 relative pl-2 pb-3">
-                      <div className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 z-10 text-base ${entry.evolved ? 'bg-[#ffd900] border-2 border-[#ffb800]' : 'bg-gray-100 border-2 border-gray-200'}`}>{entry.stage_label}</div>
+                      <div className={`w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 z-10 overflow-hidden ${entry.evolved ? 'border-2 border-[#ffb800]' : 'border-2 border-gray-200'}`}>
+                        {entry.character_image_url ? (
+                          <img src={entry.character_image_url} alt={`理解度${entry.level}`} className="w-full h-full object-contain bg-[#fff9e6]" />
+                        ) : (
+                          <div className={`w-full h-full flex items-center justify-center text-base ${entry.evolved ? 'bg-[#ffd900]' : 'bg-gray-100'}`}>
+                            {entry.stage_label}
+                          </div>
+                        )}
+                      </div>
                       <div className="flex-1 bg-gray-50 rounded-2xl px-3 py-2">
                         <div className="flex items-center gap-2">
                           <span className="font-black text-gray-800 text-sm">理解度 {entry.level}</span>
