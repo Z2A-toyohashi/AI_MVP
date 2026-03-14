@@ -4,6 +4,32 @@ import { useState, useEffect } from 'react';
 import type { Post } from '@/types';
 import { getUserColor, formatTime } from '@/lib/utils';
 
+// テキスト内のURLをリンクに変換するコンポーネント
+function LinkedText({ text, className }: { text: string; className?: string }) {
+  const urlRegex = /(https?:\/\/[^\s\u3000-\u9fff\uff00-\uffef]+)/g;
+  const parts = text.split(urlRegex);
+  return (
+    <span className={className}>
+      {parts.map((part, i) =>
+        urlRegex.test(part) ? (
+          <a
+            key={i}
+            href={part}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-[#1cb0f6] underline underline-offset-2 break-all hover:text-[#0a8fd4] transition-colors"
+            onClick={e => e.stopPropagation()}
+          >
+            {part}
+          </a>
+        ) : (
+          <span key={i}>{part}</span>
+        )
+      )}
+    </span>
+  );
+}
+
 // ユーザーIDから一貫したアバター文字を生成
 function AvatarCircle({ id, size = 10 }: { id: string; size?: number }) {
   const { avatarUrl } = useUserProfile(id, 'user');
@@ -110,7 +136,7 @@ function ReplyItem({ reply, onReply }: ReplyItemProps) {
           <span className="text-[11px] text-gray-400 font-bold">{formatTime(reply.created_at)}</span>
         </div>
         <p className="text-sm text-gray-700 font-semibold whitespace-pre-wrap break-words leading-relaxed">
-          {reply.content}
+          <LinkedText text={reply.content} />
         </p>
         <button
           onClick={() => onReply(reply.id)}
@@ -228,7 +254,7 @@ export default function PostItem({ post, replies: initialReplies, onReply, curre
 
           {/* 本文 */}
           <p className="text-[15px] text-gray-800 font-semibold whitespace-pre-wrap break-words leading-relaxed mb-3">
-            {post.content}
+            <LinkedText text={post.content} />
           </p>
 
           {/* 画像 */}

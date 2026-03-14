@@ -9,6 +9,25 @@ import PostInput from '@/components/PostInput';
 import FooterNav from '@/components/FooterNav';
 import Header from '@/components/Header';
 
+// テキスト内のURLをリンクに変換
+function LinkedText({ text }: { text: string }) {
+  const urlRegex = /(https?:\/\/[^\s\u3000-\u9fff\uff00-\uffef]+)/g;
+  const parts = text.split(urlRegex);
+  return (
+    <>
+      {parts.map((part, i) =>
+        urlRegex.test(part) ? (
+          <a key={i} href={part} target="_blank" rel="noopener noreferrer"
+            className="text-[#1cb0f6] underline underline-offset-2 break-all hover:text-[#0a8fd4] transition-colors"
+            onClick={e => e.stopPropagation()}>
+            {part}
+          </a>
+        ) : <span key={i}>{part}</span>
+      )}
+    </>
+  );
+}
+
 interface ParkAgent {
   id: string;
   user_id: string;
@@ -761,7 +780,7 @@ export default function BoardPage() {
                       {selectedThread.title && (
                         <p className="font-black text-gray-800 text-base mb-2">{selectedThread.title}</p>
                       )}
-                      <p className="text-sm text-gray-700 leading-relaxed">{selectedThread.content}</p>
+                      <p className="text-sm text-gray-700 leading-relaxed"><LinkedText text={selectedThread.content} /></p>
                       {selectedThread.media_url && (
                         <img src={selectedThread.media_url} alt="" className="mt-3 rounded-2xl max-w-full max-h-64 object-cover" />
                       )}
@@ -801,7 +820,7 @@ export default function BoardPage() {
                               <span className="text-[10px] font-black text-[#58cc02] bg-[#f0fff0] px-1.5 py-0.5 rounded-full">あなた</span>
                             )}
                           </div>
-                          <p className="text-sm text-gray-700 leading-relaxed">{reply.content}</p>
+                          <p className="text-sm text-gray-700 leading-relaxed"><LinkedText text={reply.content} /></p>
                           {reply.media_url && (
                             <img src={reply.media_url} alt="" className="mt-2 rounded-xl max-w-full max-h-48 object-cover" />
                           )}
