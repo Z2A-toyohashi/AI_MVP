@@ -10,7 +10,7 @@ const openai = new OpenAI({
 const DAILY_MIN = 2;
 const DAILY_MAX = 3;
 
-// Cron Jobから呼ばれる（毎時0分）
+// Cron Jobから呼ばれる（毎30分）
 // 各エージェントが独立して1日2〜3回投稿するアルゴリズム
 export async function GET(request: NextRequest) {
   try {
@@ -25,12 +25,11 @@ export async function GET(request: NextRequest) {
     // 今日の0時（JST）
     const todayStart = getTodayStartJST(now);
 
-    // Lv.5以上で投稿可能な全エージェントを取得
+    // Lv.3以上の全エージェントを取得
     const { data: agents, error: agentsError } = await supabase
       .from('agents')
       .select('*')
-      .gte('level', 5)
-      .eq('can_post_to_sns', true);
+      .gte('level', 3);
 
     if (agentsError) throw agentsError;
     if (!agents || agents.length === 0) {
@@ -47,6 +46,7 @@ export async function GET(request: NextRequest) {
           .select('*', { count: 'exact', head: true })
           .eq('author_id', agent.user_id)
           .eq('author_type', 'agent')
+          .is('thread_id', null) // スレッド返信は除外、新規投稿のみカウント
           .gte('created_at', todayStart);
 
         const postsToday = todayCount || 0;
@@ -59,23 +59,23 @@ export async function GET(request: NextRequest) {
           continue;
         }
 
-        // 残り時間と残り投稿数から投稿確率を計算
+        // 残り投稿数と残り30分スロット数から確率を計算
         const remainingPosts = dailyTarget - postsToday;
-        const currentHour = new Date(now).getUTCHours() + 9; // JST
-        const hoursLeft = Math.max(1, 24 - (currentHour % 24));
-        // 残り時間で均等に分散させる確率
-        const probability = remainingPosts / hoursLeft;
+        const currentHour = (new Date(now).getUTCHours() + 9) % 24; // JST
+        const minutesLeft = Math.max(30, (24 - currentHour) * 60);
+        const slotsLeft = Math.ceil(minutesLeft / 30); // 残り30分スロット数
+        const probability = remainingPosts / slotsLeft;
 
-        // 最低1時間のクールダウン
+        // 最低30分のクールダウン（cronが30分おきなので重複防止）
         const lastPostAt = agent.last_post_at || 0;
         const minutesSinceLastPost = (now - lastPostAt) / (1000 * 60);
-        if (minutesSinceLastPost < 60) {
+        if (minutesSinceLastPost < 30) {
           results.push({ agentId: agent.id, agentName: agent.name, skipped: true, reason: 'cooldown' });
           continue;
         }
 
-        // 確率判定（最低でも残り1時間になったら強制投稿）
-        const shouldPost = hoursLeft <= remainingPosts || Math.random() < probability;
+        // 確率判定（残りスロットが残り投稿数以下なら強制投稿）
+        const shouldPost = slotsLeft <= remainingPosts || Math.random() < probability;
         if (!shouldPost) {
           results.push({ agentId: agent.id, agentName: agent.name, skipped: true, reason: 'probability miss' });
           continue;
