@@ -78,7 +78,7 @@ export default function BoardPage() {
   const [loadingMore, setLoadingMore] = useState(false);
 
   // 掲示板スレッド状態
-  const [boardView, setBoardView] = useState<'list' | 'thread'>('list');
+  const [boardView, setBoardView] = useState<'list' | 'thread' | 'archive' | 'ranking'>('list');
   const [selectedThread, setSelectedThread] = useState<Post | null>(null);
   const [threadReplies, setThreadReplies] = useState<Post[]>([]);
   const [threadLoading, setThreadLoading] = useState(false);
@@ -95,6 +95,14 @@ export default function BoardPage() {
   const [newThreadImagePreview, setNewThreadImagePreview] = useState<string | null>(null);
   const [newThreadUploading, setNewThreadUploading] = useState(false);
   const newThreadFileInputRef = useRef<HTMLInputElement>(null);
+
+  // スレッド残り時間カウントダウン
+  const [threadTimeLeft, setThreadTimeLeft] = useState<number>(0);
+  const threadTimerRef = useRef<NodeJS.Timeout | null>(null);
+
+  // アーカイブ・ランキング
+  const [archivedPosts, setArchivedPosts] = useState<Post[]>([]);
+  const [rankingPosts, setRankingPosts] = useState<Post[]>([]);
 
   // DM状態
   const [dms, setDms] = useState<Array<{ id: string; from_agent_name: string; to_agent_name: string; message: string; reply?: string; created_at: number }>>([]);
@@ -129,11 +137,32 @@ export default function BoardPage() {
   const lastSeenAtRef = useRef<number>(0);
 
   // ---- タイムライン ----
+  // boardViewとselectedThreadをrefで追跡（クロージャ問題回避）
+  const boardViewRef = useRef<'list' | 'thread' | 'archive' | 'ranking'>('list');
+  const selectedThreadRef = useRef<Post | null>(null);
+
+  useEffect(() => { boardViewRef.current = boardView; }, [boardView]);
+  useEffect(() => { selectedThreadRef.current = selectedThread; }, [selectedThread]);
+
   useEffect(() => {
     initializeApp();
     const subscription = supabase
-      .channel('posts')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'posts' }, () => fetchPosts())
+      .channel('posts-realtime')
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'posts' }, (payload) => {
+        const newPost = payload.new as any;
+        // スレッドビュー: 現在開いているスレッドへの返信なら即時更新
+        if (boardViewRef.current === 'thread' && selectedThreadRef.current && newPost.thread_id === selectedThreadRef.current.id) {
+          fetch(`/api/posts?threadId=${selectedThreadRef.current.id}`)
+            .then(r => r.json())
+            .then(d => setThreadReplies(d.posts || []))
+            .catch(() => {});
+          return;
+        }
+        // 一覧ビュー: 新規スレッドが来たら一覧更新
+        if (boardViewRef.current === 'list' && !newPost.thread_id && !newPost.topic_id) {
+          fetchPosts();
+        }
+      })
       .subscribe();
     return () => { subscription.unsubscribe(); };
   }, []);
@@ -466,6 +495,37 @@ export default function BoardPage() {
     setLoading(false);
   };
 
+  const formatCountdown = (ms: number) => {
+    if (ms <= 0) return '終了';
+    const h = Math.floor(ms / 3600000);
+    const m = Math.floor((ms % 3600000) / 60000);
+    const s = Math.floor((ms % 60000) / 1000);
+    return `${h}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+  };
+
+  const startThreadTimer = (expiresAt: number) => {
+    if (threadTimerRef.current) clearInterval(threadTimerRef.current);
+    const update = () => setThreadTimeLeft(Math.max(0, expiresAt - Date.now()));
+    update();
+    threadTimerRef.current = setInterval(update, 1000);
+  };
+
+  const fetchArchivedPosts = async () => {
+    try {
+      const res = await fetch('/api/posts?mode=archive');
+      const data = await res.json();
+      setArchivedPosts(data.posts || []);
+    } catch (e) { console.error(e); }
+  };
+
+  const fetchRankingPosts = async () => {
+    try {
+      const res = await fetch('/api/posts?mode=ranking');
+      const data = await res.json();
+      setRankingPosts(data.posts || []);
+    } catch (e) { console.error(e); }
+  };
+
   const fetchPosts = async () => {
     try {
       const res = await fetch(`/api/posts?limit=20${userId ? `&userId=${userId}` : ''}`);
@@ -545,6 +605,8 @@ export default function BoardPage() {
     setSelectedThread(thread);
     setBoardView('thread');
     setThreadLoading(true);
+    // 残り時間タイマー開始
+    if (thread.expires_at) startThreadTimer(thread.expires_at);
     try {
       const res = await fetch(`/api/posts?threadId=${thread.id}`);
       const data = await res.json();
@@ -722,28 +784,92 @@ export default function BoardPage() {
         {/* タブ */}
         <div className="flex border-b-2 border-gray-100 flex-shrink-0 bg-white sticky top-[64px] z-10">
           <button
-            onClick={() => setActiveTab('timeline')}
-            className={`flex-1 py-5 text-sm font-black transition-colors ${activeTab === 'timeline' ? 'text-[#58cc02] border-b-2 border-[#58cc02]' : 'text-gray-400'}`}
+            onClick={() => { setActiveTab('timeline'); setBoardView('list'); }}
+            className={`flex-1 py-5 text-base font-black transition-colors ${activeTab === 'timeline' && boardView !== 'archive' && boardView !== 'ranking' ? 'text-[#58cc02] border-b-[3px] border-[#58cc02]' : 'text-gray-400'}`}
           >
-            📋 掲示板
+            💬 掲示板
           </button>
           <button
-            onClick={() => setActiveTab('park')}
-            className={`flex-1 py-5 text-sm font-black transition-colors ${activeTab === 'park' ? 'text-[#58cc02] border-b-2 border-[#58cc02]' : 'text-gray-400'}`}
+            onClick={() => { setActiveTab('timeline'); setBoardView('archive'); fetchArchivedPosts(); }}
+            className={`flex-1 py-5 text-base font-black transition-colors ${boardView === 'archive' ? 'text-[#58cc02] border-b-[3px] border-[#58cc02]' : 'text-gray-400'}`}
           >
-            🌿 公園
+            📦 アーカイブ
           </button>
           <button
-            onClick={() => setActiveTab('dm')}
-            className={`flex-1 py-5 text-sm font-black transition-colors ${activeTab === 'dm' ? 'text-[#58cc02] border-b-2 border-[#58cc02]' : 'text-gray-400'}`}
+            onClick={() => { setActiveTab('timeline'); setBoardView('ranking'); fetchRankingPosts(); }}
+            className={`flex-1 py-5 text-base font-black transition-colors ${boardView === 'ranking' ? 'text-[#58cc02] border-b-[3px] border-[#58cc02]' : 'text-gray-400'}`}
           >
-            💬 DM
+            🏆 ランキング
           </button>
         </div>
 
         {activeTab === 'timeline' ? (
-          boardView === 'thread' && selectedThread ? (
-            /* ===== スレッド詳細 ===== */
+          boardView === 'archive' ? (
+            /* ===== アーカイブ ===== */
+            <div className="flex-1 flex flex-col overflow-hidden">
+              <div className="flex-shrink-0 flex items-center gap-3 px-4 py-3 border-b border-gray-100">
+                <button onClick={() => setBoardView('list')} className="w-7 h-7 flex items-center justify-center rounded-xl hover:bg-gray-100">
+                  <svg className="w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M15 19l-7-7 7-7" /></svg>
+                </button>
+                <span className="font-black text-gray-800 text-sm">📦 アーカイブ</span>
+              </div>
+              <div className="flex-1 overflow-y-auto pb-20 px-4 py-3 space-y-3">
+                {archivedPosts.length === 0 ? (
+                  <div className="py-16 text-center"><p className="text-gray-400 font-bold text-sm">まだアーカイブがありません</p></div>
+                ) : archivedPosts.map((post) => (
+                  <div key={post.id} className="bg-white rounded-2xl border-2 border-gray-100 p-4">
+                    <div className="flex items-start justify-between gap-2 mb-2">
+                      <p className="font-black text-gray-800 text-sm">{post.title || post.content}</p>
+                      <span className="text-[10px] font-bold text-gray-400 flex-shrink-0">{formatTime(post.expires_at || post.created_at)}</span>
+                    </div>
+                    <div className="flex gap-3 text-[11px] font-bold text-gray-400 mb-2">
+                      <span>💬 {post.reply_count || 0}件</span>
+                      <span>🔥 {post.heat_score || 0}pt</span>
+                      <span className="text-gray-300">by {post.author_name || 'ユーザー'}</span>
+                    </div>
+                    {post.summary && (
+                      <div className="bg-gray-50 rounded-xl p-3">
+                        <p className="text-[10px] font-black text-gray-400 mb-1">📝 議事録</p>
+                        <p className="text-xs text-gray-600 font-semibold leading-relaxed">{post.summary}</p>
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          ) : boardView === 'ranking' ? (
+            /* ===== ランキング ===== */
+            <div className="flex-1 flex flex-col overflow-hidden">
+              <div className="flex-shrink-0 flex items-center gap-3 px-4 py-3 border-b border-gray-100">
+                <button onClick={() => setBoardView('list')} className="w-7 h-7 flex items-center justify-center rounded-xl hover:bg-gray-100">
+                  <svg className="w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M15 19l-7-7 7-7" /></svg>
+                </button>
+                <span className="font-black text-gray-800 text-sm">🏆 盛り上がりランキング</span>
+              </div>
+              <div className="flex-1 overflow-y-auto pb-20 px-4 py-3 space-y-2">
+                {rankingPosts.length === 0 ? (
+                  <div className="py-16 text-center"><p className="text-gray-400 font-bold text-sm">まだデータがありません</p></div>
+                ) : rankingPosts.map((post, idx) => (
+                  <div key={post.id} className="bg-white rounded-2xl border-2 border-gray-100 p-4 flex items-center gap-3">
+                    <div className={`w-8 h-8 rounded-full flex items-center justify-center font-black text-sm flex-shrink-0 ${idx === 0 ? 'bg-[#ffd900] text-[#78350f]' : idx === 1 ? 'bg-gray-200 text-gray-600' : idx === 2 ? 'bg-orange-200 text-orange-700' : 'bg-gray-100 text-gray-500'}`}>
+                      {idx === 0 ? '🥇' : idx === 1 ? '🥈' : idx === 2 ? '🥉' : idx + 1}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="font-black text-gray-800 text-sm truncate">{post.title || post.content}</p>
+                      <div className="flex gap-2 text-[10px] font-bold text-gray-400 mt-0.5">
+                        <span>💬 {post.reply_count || 0}</span>
+                        <span className="text-[#ff9600]">🔥 {post.heat_score || 0}pt</span>
+                      </div>
+                    </div>
+                    <span className={`text-[10px] font-black px-2 py-0.5 rounded-full flex-shrink-0 ${post.is_archived ? 'bg-gray-100 text-gray-400' : 'bg-[#f0fff0] text-[#58cc02]'}`}>
+                      {post.is_archived ? '終了' : '開催中'}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ) : boardView === 'thread' && selectedThread ? (
+            /* ===== スレッド詳細（既存） ===== */
             <div className="flex-1 flex flex-col overflow-hidden">
               {/* スレッドヘッダー */}
               <div className="flex-shrink-0 flex items-center gap-3 px-4 py-3 border-b border-gray-100 bg-white">
@@ -773,32 +899,54 @@ export default function BoardPage() {
 
               {/* 投稿一覧 */}
               <div className="flex-1 overflow-y-auto pb-24">
-                {/* スレッド本文（OP） */}
-                <div className="px-4 py-4 border-b-2 border-gray-100 bg-[#f9fffe]">
-                  <div className="flex items-start gap-3">
-                    {selectedThread.author_type === 'agent' && selectedThread.author_agent_image_url ? (
-                      <img src={selectedThread.author_agent_image_url} alt="" className="w-10 h-10 rounded-2xl object-contain bg-[#fff9e6] border-2 border-[#ffd900] flex-shrink-0" />
-                    ) : selectedThread.author_type === 'user' && selectedThread.author_avatar_url ? (
-                      <img src={selectedThread.author_avatar_url} alt="" className="w-10 h-10 rounded-2xl object-cover flex-shrink-0" />
-                    ) : (
-                      <div className="w-10 h-10 rounded-2xl bg-[#58cc02] flex items-center justify-center text-white font-black text-sm flex-shrink-0">
-                        {selectedThread.author_type === 'agent' ? '🐣' : (selectedThread.author_name || selectedThread.author_id).slice(0, 2).toUpperCase()}
-                      </div>
-                    )}
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 mb-1">
-                        <span className="text-sm font-black text-gray-800">{selectedThread.author_name || (selectedThread.author_type === 'agent' ? 'AIキャラ' : 'ユーザー')}</span>
-                        <span className="text-xs font-black text-[#58cc02] bg-[#f0fff0] px-2 py-0.5 rounded-full">スレ主</span>
-                        <span className="text-[10px] text-gray-400 font-bold">{formatTime(selectedThread.created_at)}</span>
-                      </div>
-                      {selectedThread.title && (
-                        <p className="font-black text-gray-800 text-base mb-2">{selectedThread.title}</p>
-                      )}
-                      <p className="text-sm text-gray-700 leading-relaxed"><LinkedText text={selectedThread.content} /></p>
-                      {selectedThread.media_url && (
-                        <img src={selectedThread.media_url} alt="" className="mt-3 rounded-2xl max-w-full max-h-64 object-cover" />
+                {/* 残り時間バー */}
+                {selectedThread?.expires_at && (
+                  <div className="px-4 py-2 bg-white border-b border-gray-100">
+                    <div className="flex items-center justify-between mb-1">
+                      {threadTimeLeft > 0 ? (
+                        <>
+                          <span className="text-[10px] font-black text-[#ff4b4b]">🔴 開催中</span>
+                          <span className="text-[10px] font-black text-gray-500">残り {formatCountdown(threadTimeLeft)}</span>
+                        </>
+                      ) : (
+                        <span className="text-[10px] font-black text-gray-400 w-full text-center">⏰ このスレッドは終了しました</span>
                       )}
                     </div>
+                    {threadTimeLeft > 0 && (
+                      <div className="h-1 bg-gray-100 rounded-full overflow-hidden">
+                        <div className="h-full rounded-full transition-all duration-1000"
+                          style={{
+                            width: `${Math.max(0, (threadTimeLeft / (3 * 60 * 60 * 1000)) * 100)}%`,
+                            background: threadTimeLeft > 60 * 60 * 1000 ? '#58cc02' : threadTimeLeft > 30 * 60 * 1000 ? '#ff9600' : '#ff4b4b',
+                          }} />
+                      </div>
+                    )}
+                  </div>
+                )}
+                {/* スレッド本文（OP） */}
+                <div className="px-4 py-4 border-b-2 border-gray-100 bg-[#f9fffe] flex items-start gap-3">
+                  {selectedThread.author_type === 'agent' && selectedThread.author_agent_image_url ? (
+                    <img src={selectedThread.author_agent_image_url} alt="" className="w-10 h-10 rounded-2xl object-contain bg-[#fff9e6] border-2 border-[#ffd900] flex-shrink-0" />
+                  ) : selectedThread.author_type === 'user' && selectedThread.author_avatar_url ? (
+                    <img src={selectedThread.author_avatar_url} alt="" className="w-10 h-10 rounded-2xl object-cover flex-shrink-0" />
+                  ) : (
+                    <div className="w-10 h-10 rounded-2xl bg-[#58cc02] flex items-center justify-center text-white font-black text-sm flex-shrink-0">
+                      {selectedThread.author_type === 'agent' ? '🐣' : (selectedThread.author_name || selectedThread.author_id).slice(0, 2).toUpperCase()}
+                    </div>
+                  )}
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 mb-1">
+                      <span className="text-sm font-black text-gray-800">{selectedThread.author_name || (selectedThread.author_type === 'agent' ? 'AIキャラ' : 'ユーザー')}</span>
+                      <span className="text-xs font-black text-[#58cc02] bg-[#f0fff0] px-2 py-0.5 rounded-full">スレ主</span>
+                      <span className="text-[10px] text-gray-400 font-bold">{formatTime(selectedThread.created_at)}</span>
+                    </div>
+                    {selectedThread.title && (
+                      <p className="font-black text-gray-800 text-base mb-2">{selectedThread.title}</p>
+                    )}
+                    <p className="text-sm text-gray-700 leading-relaxed"><LinkedText text={selectedThread.content} /></p>
+                    {selectedThread.media_url && (
+                      <img src={selectedThread.media_url} alt="" className="mt-3 rounded-2xl max-w-full max-h-64 object-cover" />
+                    )}
                   </div>
                 </div>
 
@@ -913,83 +1061,79 @@ export default function BoardPage() {
               </div>
             </div>
           ) : (
-            /* ===== スレッド一覧 ===== */
+            /* ===== スレッド一覧（お題バナー付き） ===== */
+            <>
             <main className="flex-1 overflow-y-auto pb-36" onScroll={handleTimelineScroll}>
-              {/* 新規スレッド作成フォーム */}
-              {showNewThread ? (
-                <div className="mx-4 mt-4 mb-2 bg-white rounded-3xl border-2 border-[#58cc02] p-4 shadow-sm">
-                  <p className="text-xs font-black text-[#58cc02] uppercase tracking-wider mb-3">新しいスレッドを立てる</p>
-                  <input
-                    type="text"
-                    value={newThreadTitle}
-                    onChange={e => setNewThreadTitle(e.target.value)}
-                    placeholder="スレッドのタイトル（お題）"
-                    className="w-full rounded-2xl border-2 border-gray-200 px-4 py-2.5 text-sm font-black text-gray-800 focus:outline-none focus:border-[#58cc02] mb-2 transition-colors"
-                  />
-                  <textarea
-                    value={newThreadContent}
-                    onChange={e => setNewThreadContent(e.target.value)}
-                    placeholder="最初のメッセージ"
-                    rows={3}
-                    className="w-full resize-none rounded-2xl border-2 border-gray-200 px-4 py-2.5 text-sm font-semibold text-gray-800 focus:outline-none focus:border-[#58cc02] mb-3 transition-colors"
-                  />
-                  {/* 画像アップロード */}
-                  <input
-                    ref={newThreadFileInputRef}
-                    type="file"
-                    accept="image/*"
-                    className="hidden"
-                    onChange={e => {
-                      const file = e.target.files?.[0];
-                      if (file) {
-                        setNewThreadImageFile(file);
-                        const reader = new FileReader();
-                        reader.onload = () => setNewThreadImagePreview(reader.result as string);
-                        reader.readAsDataURL(file);
-                      }
-                    }}
-                  />
-                  {newThreadImagePreview && (
-                    <div className="mb-3 relative inline-block">
-                      <img src={newThreadImagePreview} alt="" className="h-24 rounded-2xl object-cover" />
+
+              {/* 新規スレッド作成フォーム（モーダル） */}
+              {showNewThread && (
+                <>
+                  <div className="fixed inset-0 bg-black/50 z-40" onClick={() => { setShowNewThread(false); setNewThreadTitle(''); setNewThreadContent(''); setNewThreadImageFile(null); setNewThreadImagePreview(null); }} />
+                  <div className="fixed inset-x-4 bottom-20 z-50 bg-white rounded-3xl border-2 border-[#58cc02] p-4 shadow-2xl max-w-lg mx-auto">
+                    <p className="text-xs font-black text-[#58cc02] uppercase tracking-wider mb-3">新しいスレッドを立てる</p>
+                    <input
+                      type="text"
+                      value={newThreadTitle}
+                      onChange={e => setNewThreadTitle(e.target.value)}
+                      placeholder="スレッドのタイトル（お題）"
+                      className="w-full rounded-2xl border-2 border-gray-200 px-4 py-2.5 text-sm font-black text-gray-800 focus:outline-none focus:border-[#58cc02] mb-2 transition-colors"
+                    />
+                    <textarea
+                      value={newThreadContent}
+                      onChange={e => setNewThreadContent(e.target.value)}
+                      placeholder="最初のメッセージ"
+                      rows={3}
+                      className="w-full resize-none rounded-2xl border-2 border-gray-200 px-4 py-2.5 text-sm font-semibold text-gray-800 focus:outline-none focus:border-[#58cc02] mb-3 transition-colors"
+                    />
+                    <input
+                      ref={newThreadFileInputRef}
+                      type="file"
+                      accept="image/*"
+                      className="hidden"
+                      onChange={e => {
+                        const file = e.target.files?.[0];
+                        if (file) {
+                          setNewThreadImageFile(file);
+                          const reader = new FileReader();
+                          reader.onload = () => setNewThreadImagePreview(reader.result as string);
+                          reader.readAsDataURL(file);
+                        }
+                      }}
+                    />
+                    {newThreadImagePreview && (
+                      <div className="mb-3 relative inline-block">
+                        <img src={newThreadImagePreview} alt="" className="h-24 rounded-2xl object-cover" />
+                        <button
+                          onClick={() => { setNewThreadImageFile(null); setNewThreadImagePreview(null); if (newThreadFileInputRef.current) newThreadFileInputRef.current.value = ''; }}
+                          className="absolute -top-1 -right-1 w-5 h-5 bg-red-500 rounded-full flex items-center justify-center"
+                        >
+                          <svg className="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M6 18L18 6M6 6l12 12" /></svg>
+                        </button>
+                      </div>
+                    )}
+                    <div className="flex gap-2 mb-3">
                       <button
-                        onClick={() => { setNewThreadImageFile(null); setNewThreadImagePreview(null); if (newThreadFileInputRef.current) newThreadFileInputRef.current.value = ''; }}
-                        className="absolute -top-1 -right-1 w-5 h-5 bg-red-500 rounded-full flex items-center justify-center"
+                        onClick={() => newThreadFileInputRef.current?.click()}
+                        className="flex items-center gap-1.5 px-3 py-2 rounded-xl border-2 border-gray-200 text-xs font-black text-gray-500 hover:border-[#58cc02] hover:text-[#58cc02] transition-colors"
                       >
-                        <svg className="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M6 18L18 6M6 6l12 12" /></svg>
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
+                        画像を追加
                       </button>
                     </div>
-                  )}
-                  <div className="flex gap-2 mb-3">
-                    <button
-                      onClick={() => newThreadFileInputRef.current?.click()}
-                      className="flex items-center gap-1.5 px-3 py-2 rounded-xl border-2 border-gray-200 text-xs font-black text-gray-500 hover:border-[#58cc02] hover:text-[#58cc02] transition-colors"
-                    >
-                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
-                      画像を追加
-                    </button>
+                    <div className="flex gap-2">
+                      <button onClick={() => { setShowNewThread(false); setNewThreadTitle(''); setNewThreadContent(''); setNewThreadImageFile(null); setNewThreadImagePreview(null); }}
+                        className="flex-1 py-2.5 rounded-2xl border-2 border-gray-200 text-sm font-black text-gray-500 hover:bg-gray-50 transition-colors">
+                        キャンセル
+                      </button>
+                      <button onClick={handleCreateThread}
+                        disabled={!newThreadTitle.trim() || !newThreadContent.trim() || newThreadUploading}
+                        className="flex-1 py-2.5 rounded-2xl text-sm font-black text-white disabled:opacity-40 transition-opacity"
+                        style={{ background: 'linear-gradient(135deg, #58cc02, #3d8f00)', boxShadow: '0 3px 0 #2d6a00' }}>
+                        {newThreadUploading ? 'アップロード中...' : 'スレッドを立てる'}
+                      </button>
+                    </div>
                   </div>
-                  <div className="flex gap-2">
-                    <button onClick={() => { setShowNewThread(false); setNewThreadTitle(''); setNewThreadContent(''); setNewThreadImageFile(null); setNewThreadImagePreview(null); }}
-                      className="flex-1 py-2.5 rounded-2xl border-2 border-gray-200 text-sm font-black text-gray-500 hover:bg-gray-50 transition-colors">
-                      キャンセル
-                    </button>
-                    <button onClick={handleCreateThread}
-                      disabled={!newThreadTitle.trim() || !newThreadContent.trim() || newThreadUploading}
-                      className="flex-1 py-2.5 rounded-2xl text-sm font-black text-white disabled:opacity-40 transition-opacity"
-                      style={{ background: 'linear-gradient(135deg, #58cc02, #3d8f00)', boxShadow: '0 3px 0 #2d6a00' }}>
-                      {newThreadUploading ? 'アップロード中...' : 'スレッドを立てる'}
-                    </button>
-                  </div>
-                </div>
-              ) : (
-                <div className="px-4 pt-4 pb-2">
-                  <button onClick={() => setShowNewThread(true)}
-                    className="w-full py-3 rounded-2xl border-2 border-dashed border-[#58cc02] text-sm font-black text-[#58cc02] hover:bg-[#f0fff0] transition-colors flex items-center justify-center gap-2">
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 4v16m8-8H4" /></svg>
-                    新しいスレッドを立てる
-                  </button>
-                </div>
+                </>
               )}
 
               {/* スレッド一覧 */}
@@ -997,7 +1141,7 @@ export default function BoardPage() {
                 <div className="py-20 text-center px-8">
                   <div className="text-6xl mb-4">📋</div>
                   <p className="font-black text-gray-700 text-lg mb-2">まだスレッドがありません</p>
-                  <p className="text-gray-400 font-bold text-sm">最初のスレッドを立ててみよう！</p>
+                  <p className="text-gray-400 font-bold text-sm">右下のボタンからスレッドを立ててみよう！</p>
                 </div>
               ) : (
                 <div className="px-4 py-2 space-y-3">
@@ -1012,6 +1156,22 @@ export default function BoardPage() {
                       {post.title && (
                         <p className="text-xs text-gray-500 font-semibold leading-relaxed mb-3 line-clamp-2">{post.content}</p>
                       )}
+                      {/* 残り時間バー */}
+                      {post.expires_at && (() => {
+                        const left = Math.max(0, post.expires_at - Date.now());
+                        const pct = Math.max(0, (left / (3 * 60 * 60 * 1000)) * 100);
+                        const color = left > 60 * 60 * 1000 ? '#58cc02' : left > 30 * 60 * 1000 ? '#ff9600' : '#ff4b4b';
+                        return left > 0 ? (
+                          <div className="mb-2">
+                            <div className="flex justify-between text-[10px] font-bold mb-0.5">
+                              <span style={{ color }} className="font-black">🔴 残り {formatCountdown(left)}</span>
+                            </div>
+                            <div className="h-1 bg-gray-100 rounded-full overflow-hidden">
+                              <div className="h-full rounded-full" style={{ width: `${pct}%`, background: color }} />
+                            </div>
+                          </div>
+                        ) : <p className="text-[10px] font-black text-gray-400 mb-2">⏰ 終了</p>;
+                      })()}
                       {/* メタ情報 */}
                       <div className="flex items-center gap-3">
                         {/* アバター */}
@@ -1048,6 +1208,19 @@ export default function BoardPage() {
                 </div>
               )}
             </main>
+
+            {/* FAB: 新しいスレッドを立てる */}
+            <button
+              onClick={() => setShowNewThread(true)}
+              className="fixed bottom-20 right-4 w-14 h-14 rounded-full flex items-center justify-center z-30 active:scale-95 transition-transform"
+              style={{ background: 'linear-gradient(135deg, #58cc02, #3d8f00)', boxShadow: '0 4px 0 #2d6a00' }}
+              aria-label="新しいスレッドを立てる"
+            >
+              <svg className="w-7 h-7 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 4v16m8-8H4" />
+              </svg>
+            </button>
+            </>
           )
         ) : activeTab === 'dm' ? (
           dmView === 'list' ? (

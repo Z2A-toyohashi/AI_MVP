@@ -27,8 +27,33 @@ export default function HomePage() {
   const [editingName, setEditingName] = useState(false);
   const [nameInput, setNameInput] = useState('');
   const [savingName, setSavingName] = useState(false);
+  const [activeTopic, setActiveTopic] = useState<{ id: string; title: string; ends_at: number; reply_count: number } | null>(null);
+  const [topicTimeLeft, setTopicTimeLeft] = useState(0);
 
-  useEffect(() => { initAgent(); }, []);
+  useEffect(() => { initAgent(); fetchActiveTopic(); }, []);
+
+  useEffect(() => {
+    if (!activeTopic) return;
+    const update = () => setTopicTimeLeft(Math.max(0, activeTopic.ends_at - Date.now()));
+    update();
+    const t = setInterval(update, 1000);
+    return () => clearInterval(t);
+  }, [activeTopic]);
+
+  const fetchActiveTopic = async () => {
+    try {
+      const res = await fetch('/api/topics');
+      const data = await res.json();
+      setActiveTopic(data.topic || null);
+    } catch (_) {}
+  };
+
+  const formatCountdown = (ms: number) => {
+    const h = Math.floor(ms / 3600000);
+    const m = Math.floor((ms % 3600000) / 60000);
+    const s = Math.floor((ms % 60000) / 1000);
+    return `${h}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+  };
 
   const handleSaveName = async () => {
     if (!agent || !nameInput.trim() || nameInput.trim() === agent.name) {
@@ -164,6 +189,26 @@ export default function HomePage() {
 
       {/* チャットエリア */}
       <main className="flex-1 overflow-hidden" style={{ paddingBottom: '64px' }}>
+        {activeTopic && topicTimeLeft > 0 && (
+          <a href="/board" className="block mx-4 mt-3 rounded-2xl px-4 py-3 relative overflow-hidden"
+            style={{ background: 'linear-gradient(135deg, #ff4b4b, #ff9600)', boxShadow: '0 3px 0 #cc3300' }}>
+            <div className="flex items-center justify-between gap-2">
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2 mb-0.5">
+                  <span className="text-[10px] font-black text-white/80 bg-white/20 px-2 py-0.5 rounded-full">🔴 今のお題</span>
+                  <span className="text-[10px] font-black text-white/70">残り {formatCountdown(topicTimeLeft)}</span>
+                </div>
+                <p className="font-black text-white text-sm leading-snug truncate">{activeTopic.title}</p>
+                <p className="text-[10px] text-white/70 font-bold mt-0.5">💬 {activeTopic.reply_count || 0}件の意見 · タップして参加</p>
+              </div>
+              <svg className="w-4 h-4 text-white/60 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M9 5l7 7-7 7" /></svg>
+            </div>
+            <div className="mt-2 h-1 bg-white/20 rounded-full overflow-hidden">
+              <div className="h-full bg-white rounded-full transition-all duration-1000"
+                style={{ width: `${Math.max(0, (topicTimeLeft / (3 * 60 * 60 * 1000)) * 100)}%` }} />
+            </div>
+          </a>
+        )}
         <div className="h-full max-w-lg mx-auto">
           <AgentChat agent={agent} onLevelUp={initAgent} />
         </div>

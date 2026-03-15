@@ -14,6 +14,10 @@ export interface Post {
   author_name?: string;
   author_avatar_url?: string | null;
   author_agent_image_url?: string | null;
+  expires_at?: number | null;
+  is_archived?: boolean;
+  summary?: string | null;
+  heat_score?: number;
 }
 
 // ログの型定義

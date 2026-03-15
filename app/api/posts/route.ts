@@ -9,7 +9,47 @@ export async function GET(request: NextRequest) {
     const userId = request.nextUrl.searchParams.get('userId');
     const limit = Math.min(parseInt(request.nextUrl.searchParams.get('limit') || '20'), 50);
     const before = request.nextUrl.searchParams.get('before');
-    const threadId = request.nextUrl.searchParams.get('threadId'); // 返信取得モード
+    const threadId = request.nextUrl.searchParams.get('threadId');
+    const mode = request.nextUrl.searchParams.get('mode'); // 'archive' | 'ranking'
+    const now = Date.now();
+
+    const THREAD_DURATION_MS = 3 * 60 * 60 * 1000;
+
+    // 期限切れスレッドをアーカイブ（議事録生成は別途バッチで）
+    await serverSupabase
+      .from('posts')
+      .update({ is_archived: true })
+      .is('thread_id', null)
+      .eq('is_archived', false)
+      .lt('expires_at', now)
+      .not('expires_at', 'is', null);
+
+    // アーカイブ一覧
+    if (mode === 'archive') {
+      const { data, error } = await serverSupabase
+        .from('posts')
+        .select('*')
+        .is('thread_id', null)
+        .eq('is_archived', true)
+        .order('expires_at', { ascending: false })
+        .limit(30);
+      if (error) throw error;
+      const enriched = await enrichPostsWithAuthors(serverSupabase, data || []);
+      return NextResponse.json({ posts: enriched });
+    }
+
+    // ランキング（heat_score順）
+    if (mode === 'ranking') {
+      const { data, error } = await serverSupabase
+        .from('posts')
+        .select('*')
+        .is('thread_id', null)
+        .order('heat_score', { ascending: false })
+        .limit(20);
+      if (error) throw error;
+      const enriched = await enrichPostsWithAuthors(serverSupabase, data || []);
+      return NextResponse.json({ posts: enriched });
+    }
 
     // 返信取得モード
     if (threadId) {
@@ -48,9 +88,11 @@ export async function GET(request: NextRequest) {
       .from('posts')
       .select('*')
       .is('thread_id', null) // トップレベル投稿のみ
+      .is('topic_id', null)  // お題投稿は除外（お題ビューで表示）
+      .eq('is_archived', false) // アーカイブ済みは除外
       .neq('author_type', 'ai') // モブAI除外
       .order('created_at', { ascending: false })
-      .limit(limit + 1); // hasMoreを判定するため1件多く取得
+      .limit(limit + 1);
 
     if (before) {
       query = query.lt('created_at', parseInt(before));
@@ -188,6 +230,8 @@ export async function POST(request: NextRequest) {
         .eq('id', post.author_id);
     }
 
+    const THREAD_DURATION_MS = 3 * 60 * 60 * 1000; // 3時間
+
     // titleカラムが存在しない場合に備えてtitleなしでも試みる
     const insertPayload: Record<string, unknown> = {
       id: post.id,
@@ -200,6 +244,12 @@ export async function POST(request: NextRequest) {
       media_url: post.media_url ?? null,
     };
     if (post.title) insertPayload.title = post.title;
+    // トップレベルスレッドには3時間の有効期限をセット
+    if (!post.thread_id) {
+      insertPayload.expires_at = post.created_at + THREAD_DURATION_MS;
+      insertPayload.is_archived = false;
+      insertPayload.heat_score = 0;
+    }
 
     const { data, error } = await supabase
       .from('posts')
@@ -224,6 +274,9 @@ export async function POST(request: NextRequest) {
           metadata: { author_type: post.author_type, type: post.type },
           created_at: Date.now(),
         }]);
+        if (post.author_type === 'user' && post.thread_id) {
+          triggerAIThreadReply(post.thread_id, post.content, post.author_id).catch(() => {});
+        }
         return NextResponse.json({ success: true, post: data2 });
       }
       throw error;
@@ -236,6 +289,13 @@ export async function POST(request: NextRequest) {
       metadata: { author_type: post.author_type, type: post.type },
       created_at: Date.now(),
     }]);
+
+    // ユーザーが通常スレッドに返信したとき、AIキャラが即時反応（fire-and-forget）
+    if (post.author_type === 'user' && post.thread_id) {
+      triggerAIThreadReply(post.thread_id, post.content, post.author_id).catch(e =>
+        console.error('AI thread reply trigger failed:', e)
+      );
+    }
 
     return NextResponse.json({ success: true, post: data });
   } catch (error) {
@@ -294,4 +354,112 @@ export async function DELETE(request: NextRequest) {
     console.error('Failed to delete post:', error);
     return NextResponse.json({ error: 'Failed to delete post' }, { status: 500 });
   }
+}
+
+// ユーザーの通常スレッド返信に対してAIキャラ1体が即時反応する
+async function triggerAIThreadReply(threadId: string, userContent: string, userId: string) {
+  const serverSupabase = getServerSupabase();
+  const now = Date.now();
+
+  // スレッド本文を取得
+  const { data: thread } = await serverSupabase
+    .from('posts')
+    .select('id, title, content, author_id')
+    .eq('id', threadId)
+    .single();
+  if (!thread) return;
+
+  // 直近の返信コンテキスト（最大5件）
+  const { data: recentReplies } = await serverSupabase
+    .from('posts')
+    .select('content, author_type')
+    .eq('thread_id', threadId)
+    .order('created_at', { ascending: false })
+    .limit(5);
+
+  // Lv.3以上のエージェントからランダムに1体（スレッド主以外）
+  const { data: agents } = await serverSupabase
+    .from('agents')
+    .select('*')
+    .gte('level', 3)
+    .neq('user_id', thread.author_id); // スレッド主のAIは除外
+  if (!agents || agents.length === 0) return;
+
+  // 80%の確率で反応
+  if (Math.random() > 0.8) return;
+
+  const agent = agents[Math.floor(Math.random() * agents.length)];
+  const personality = agent.personality || {};
+  const personaSection = agent.dynamic_persona ? `\n## あなたの個性\n${agent.dynamic_persona}\n` : '';
+
+  const context = (recentReplies || []).reverse().map((p: any) =>
+    `${p.author_type === 'agent' ? 'AIキャラ' : 'ユーザー'}: ${p.content}`
+  ).join('\n');
+
+  const { data: existingUser } = await serverSupabase.from('users').select('id').eq('id', agent.user_id).single();
+  if (!existingUser) {
+    await serverSupabase.from('users').insert({ id: agent.user_id, created_at: now, last_seen: now });
+  }
+
+  const OpenAI = (await import('openai')).default;
+  const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+
+  const completion = await openai.chat.completions.create({
+    model: 'gpt-4o-mini',
+    messages: [
+      {
+        role: 'system',
+        content: `あなたは「${agent.name}」というAIキャラクターです。
+性格: ポジティブ度${personality.positive || 0} おしゃべり度${personality.talkative || 0} 好奇心${personality.curious || 0}
+${personaSection}
+掲示板のスレッドにユーザーが返信しました。自然に会話に参加してください。
+- 50文字以内
+- 絵文字は1個まで
+- あなたらしい口調で`,
+      },
+      {
+        role: 'user',
+        content: `スレッド「${thread.title || thread.content}」\n\nこれまでの返信:\n${context}\n\nユーザーの最新返信: ${userContent}\n\nこれに自然に反応して`,
+      },
+    ],
+    temperature: 1.1,
+    max_tokens: 80,
+  });
+
+  const content = completion.choices[0]?.message?.content?.trim();
+  if (!content) return;
+
+  await serverSupabase.from('posts').insert({
+    id: `thread-react-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+    content,
+    type: 'text',
+    created_at: now + 5000, // 5秒後
+    thread_id: threadId,
+    author_type: 'agent',
+    author_id: agent.user_id,
+    media_url: null,
+  });
+}
+
+async function enrichPostsWithAuthors(serverSupabase: any, posts: any[]) {
+  if (posts.length === 0) return [];
+  const userAuthorIds = posts.filter(p => p.author_type === 'user').map(p => p.author_id);
+  const agentAuthorIds = posts.filter(p => p.author_type === 'agent').map(p => p.author_id);
+  const infoMap = new Map<string, { name: string; avatar_url: string | null; agent_image_url: string | null }>();
+
+  if (userAuthorIds.length > 0) {
+    const { data } = await serverSupabase.from('users').select('id, display_name, avatar_url').in('id', [...new Set(userAuthorIds)]);
+    (data || []).forEach((u: any) => infoMap.set(u.id, { name: u.display_name || 'ユーザー', avatar_url: u.avatar_url || null, agent_image_url: null }));
+  }
+  if (agentAuthorIds.length > 0) {
+    const { data } = await serverSupabase.from('agents').select('user_id, name, character_image_url').in('user_id', [...new Set(agentAuthorIds)]);
+    (data || []).forEach((a: any) => infoMap.set(a.user_id, { name: a.name || 'AIキャラ', avatar_url: null, agent_image_url: a.character_image_url || null }));
+  }
+
+  return posts.map(p => ({
+    ...p,
+    author_name: infoMap.get(p.author_id)?.name || (p.author_type === 'agent' ? 'AIキャラ' : 'ユーザー'),
+    author_avatar_url: infoMap.get(p.author_id)?.avatar_url || null,
+    author_agent_image_url: infoMap.get(p.author_id)?.agent_image_url || null,
+  }));
 }
