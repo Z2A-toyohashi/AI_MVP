@@ -14,6 +14,7 @@ interface Message {
   role: 'user' | 'assistant' | 'ai';
   content: string;
   created_at: number;
+  source?: string | null;
 }
 
 interface Props {
@@ -355,6 +356,12 @@ export default function AgentChat({ agent, onLevelUp }: Props) {
               )}
 
               <div className={`flex flex-col max-w-[75%] ${isAI(msg.role) ? 'items-start' : 'items-end'}`}>
+                {/* 掲示板由来メッセージのバッジ */}
+                {isAI(msg.role) && (msg as any).source === 'board' && (
+                  <span className="text-[10px] font-black text-[#1cb0f6] bg-[#e8f7ff] px-2 py-0.5 rounded-full mb-1">
+                    📋 掲示板での気づき
+                  </span>
+                )}
                 <div className={isAI(msg.role) ? 'bubble-ai px-4 py-3' : 'bubble-user px-4 py-3'}>
                   <div className="text-sm font-semibold text-gray-800 leading-relaxed">
                     {renderContent(msg.content)}

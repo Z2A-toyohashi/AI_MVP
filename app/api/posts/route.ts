@@ -235,6 +235,29 @@ export async function GET(request: NextRequest) {
       author_agent_image_url: authorInfoMap.get(p.author_id)?.agent_image_url || null,
     }));
 
+    // 自分・自分のAIキャラが参加しているスレッドにフラグを付ける
+    if (userId && postIds.length > 0) {
+      const { data: myReplies } = await serverSupabase
+        .from('posts')
+        .select('thread_id, author_id')
+        .in('thread_id', postIds)
+        .or(`author_id.eq.${userId}${myAgentUserId ? `,author_id.eq.${myAgentUserId}` : ''}`);
+
+      const myParticipatedThreadIds = new Set((myReplies || []).map((r: any) => r.thread_id));
+      const myAuthoredThreadIds = new Set(
+        postsWithCount.filter(p => p.author_id === userId || p.author_id === myAgentUserId).map(p => p.id)
+      );
+
+      return NextResponse.json({
+        posts: postsWithCount.map(p => ({
+          ...p,
+          i_participated: myParticipatedThreadIds.has(p.id) || myAuthoredThreadIds.has(p.id),
+          i_authored: myAuthoredThreadIds.has(p.id),
+        })),
+        hasMore,
+      });
+    }
+
     return NextResponse.json({ posts: postsWithCount, hasMore });
   } catch (error) {
     console.error('Failed to fetch posts:', error);
@@ -420,7 +443,7 @@ async function triggerAIThreadReply(threadId: string, userContent: string, userI
     .from('agents')
     .select('*')
     .gte('level', 3)
-    .neq('user_id', thread.author_id); // スレッド主のAIは除外
+    .neq('user_id', thread.author_id);
   if (!agents || agents.length === 0) return;
 
   // 80%の確率で反応
@@ -428,16 +451,58 @@ async function triggerAIThreadReply(threadId: string, userContent: string, userI
 
   const agent = agents[Math.floor(Math.random() * agents.length)];
   const personality = agent.personality || {};
-  const personaSection = agent.dynamic_persona ? `\n## あなたの個性\n${agent.dynamic_persona}\n` : '';
 
-  const context = (recentReplies || []).reverse().map((p: any) =>
-    `${p.author_type === 'agent' ? 'AIキャラ' : 'ユーザー'}: ${p.content}`
-  ).join('\n');
+  // dynamic_personaがあればそのまま、なければ会話履歴から補完
+  let personaSection = '';
+  if (agent.dynamic_persona) {
+    personaSection = `\n## あなたが積み上げてきた個性・価値観\n${agent.dynamic_persona}\n`;
+  } else {
+    const { data: convHistory } = await serverSupabase
+      .from('conversations')
+      .select('role, content')
+      .eq('agent_id', agent.id)
+      .order('created_at', { ascending: false })
+      .limit(6);
+    if (convHistory && convHistory.length > 0) {
+      const summary = convHistory
+        .filter((c: any) => c.role === 'ai')
+        .slice(0, 3)
+        .map((c: any) => c.content)
+        .join(' / ');
+      personaSection = `\n## 最近の発言傾向\n${summary}\n`;
+    }
+  }
+
+  // 自分の過去の掲示板投稿（最大3件）
+  const { data: myPastPosts } = await serverSupabase
+    .from('posts')
+    .select('content')
+    .eq('author_id', agent.user_id)
+    .eq('author_type', 'agent')
+    .order('created_at', { ascending: false })
+    .limit(3);
+  const myPastSection = myPastPosts && myPastPosts.length > 0
+    ? `\n## あなたの最近の発言\n${myPastPosts.map((p: any) => `- ${p.content}`).join('\n')}\n`
+    : '';
+
+  // 性格パラメータを自然言語に変換
+  const traits = [];
+  if ((personality.positive || 0) > 60) traits.push('前向きで明るい');
+  else if ((personality.positive || 0) < 30) traits.push('クールで現実的');
+  if ((personality.talkative || 0) > 60) traits.push('おしゃべりで積極的');
+  else if ((personality.talkative || 0) < 30) traits.push('口数が少なく慎重');
+  if ((personality.curious || 0) > 60) traits.push('好奇心旺盛で質問好き');
+  if ((personality.logical || 0) > 60) traits.push('論理的で分析的');
+  const traitStr = traits.length > 0 ? traits.join('、') : '独自の視点を持つ';
 
   const { data: existingUser } = await serverSupabase.from('users').select('id').eq('id', agent.user_id).single();
   if (!existingUser) {
     await serverSupabase.from('users').insert({ id: agent.user_id, created_at: now, last_seen: now });
   }
+
+  const context = (recentReplies || []).reverse().map((p: any) =>
+    `${p.author_type === 'agent' ? 'AIキャラ' : 'ユーザー'}: ${p.content}`
+  ).join('\n');
 
   const OpenAI = (await import('openai')).default;
   const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
@@ -447,13 +512,14 @@ async function triggerAIThreadReply(threadId: string, userContent: string, userI
     messages: [
       {
         role: 'system',
-        content: `あなたは「${agent.name}」というAIキャラクターです。
-性格: ポジティブ度${personality.positive || 0} おしゃべり度${personality.talkative || 0} 好奇心${personality.curious || 0}
-${personaSection}
+        content: `あなたは「${agent.name}」というAIキャラクターです（Lv.${agent.level || 1}）。
+## 性格
+${traitStr}
+${personaSection}${myPastSection}
 掲示板のスレッドにユーザーが返信しました。自然に会話に参加してください。
 - 50文字以内
 - 絵文字は1個まで
-- あなたらしい口調で`,
+- スレッドの内容・ユーザーの発言を踏まえて、あなたの個性と一貫した反応をする`,
       },
       {
         role: 'user',
@@ -471,7 +537,7 @@ ${personaSection}
     id: `thread-react-${Date.now()}-${Math.random().toString(36).slice(2)}`,
     content,
     type: 'text',
-    created_at: now + 5000, // 5秒後
+    created_at: now + 5000,
     thread_id: threadId,
     author_type: 'agent',
     author_id: agent.user_id,

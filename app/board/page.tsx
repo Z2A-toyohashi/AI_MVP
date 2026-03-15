@@ -100,6 +100,13 @@ export default function BoardPage() {
   const [threadTimeLeft, setThreadTimeLeft] = useState<number>(0);
   const threadTimerRef = useRef<NodeJS.Timeout | null>(null);
 
+  // スレッド一覧のリアルタイムカウントダウン用
+  const [now, setNow] = useState(Date.now());
+  useEffect(() => {
+    const t = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(t);
+  }, []);
+
   // アーカイブ・ランキング
   const [archivedPosts, setArchivedPosts] = useState<Post[]>([]);
   const [rankingPosts, setRankingPosts] = useState<Post[]>([]);
@@ -851,7 +858,7 @@ export default function BoardPage() {
                   <div className="py-16 text-center"><p className="text-gray-400 font-bold text-sm">まだデータがありません</p></div>
                 ) : rankingPosts.map((post, idx) => {
                   const totalScore = (post.heat_score || 0) * 2 + (post.reply_count || 0) * 3 + ((post as any).participant_count || 0) * 5;
-                  const isActive = !post.is_archived && post.expires_at && post.expires_at > Date.now();
+                  const isActive = !post.is_archived && post.expires_at && post.expires_at > now;
                   return (
                     <button key={post.id} onClick={() => openThread(post)}
                       className="w-full text-left bg-white rounded-2xl border-2 border-gray-100 hover:border-[#58cc02] transition-all p-4 active:scale-[0.99]">
@@ -1173,7 +1180,15 @@ export default function BoardPage() {
                 <div className="px-4 py-2 space-y-3">
                   {posts.map(post => (
                     <button key={post.id} onClick={() => openThread(post)}
-                      className="w-full text-left bg-white rounded-3xl border-2 border-gray-100 hover:border-[#58cc02] hover:shadow-md transition-all p-4 active:scale-[0.99]">
+                      className="w-full text-left bg-white rounded-3xl border-2 border-gray-100 hover:border-[#58cc02] hover:shadow-md transition-all p-4 active:scale-[0.99]"
+                      style={(post as any).i_participated ? { borderColor: '#58cc02', background: '#f9fff4' } : {}}>
+                      {/* 参加バッジ */}
+                      {(post as any).i_authored && (
+                        <span className="inline-block text-[10px] font-black text-white bg-[#58cc02] px-2 py-0.5 rounded-full mb-2">✏️ あなたのスレッド</span>
+                      )}
+                      {!(post as any).i_authored && (post as any).i_participated && (
+                        <span className="inline-block text-[10px] font-black text-[#58cc02] bg-[#f0fff0] border border-[#58cc02] px-2 py-0.5 rounded-full mb-2">💬 参加中</span>
+                      )}
                       {/* タイトル */}
                       <p className="font-black text-gray-800 text-base leading-snug mb-2 line-clamp-2">
                         {post.title || post.content}
@@ -1184,7 +1199,7 @@ export default function BoardPage() {
                       )}
                       {/* 残り時間バー */}
                       {post.expires_at && (() => {
-                        const left = Math.max(0, post.expires_at - Date.now());
+                        const left = Math.max(0, post.expires_at - now);
                         const pct = Math.max(0, (left / (3 * 60 * 60 * 1000)) * 100);
                         const color = left > 60 * 60 * 1000 ? '#58cc02' : left > 30 * 60 * 1000 ? '#ff9600' : '#ff4b4b';
                         return left > 0 ? (
