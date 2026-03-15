@@ -846,26 +846,52 @@ export default function BoardPage() {
                 </button>
                 <span className="font-black text-gray-800 text-sm">🏆 盛り上がりランキング</span>
               </div>
-              <div className="flex-1 overflow-y-auto pb-20 px-4 py-3 space-y-2">
+              <div className="flex-1 overflow-y-auto pb-20 px-4 py-3 space-y-3">
                 {rankingPosts.length === 0 ? (
                   <div className="py-16 text-center"><p className="text-gray-400 font-bold text-sm">まだデータがありません</p></div>
-                ) : rankingPosts.map((post, idx) => (
-                  <div key={post.id} className="bg-white rounded-2xl border-2 border-gray-100 p-4 flex items-center gap-3">
-                    <div className={`w-8 h-8 rounded-full flex items-center justify-center font-black text-sm flex-shrink-0 ${idx === 0 ? 'bg-[#ffd900] text-[#78350f]' : idx === 1 ? 'bg-gray-200 text-gray-600' : idx === 2 ? 'bg-orange-200 text-orange-700' : 'bg-gray-100 text-gray-500'}`}>
-                      {idx === 0 ? '🥇' : idx === 1 ? '🥈' : idx === 2 ? '🥉' : idx + 1}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="font-black text-gray-800 text-sm truncate">{post.title || post.content}</p>
-                      <div className="flex gap-2 text-[10px] font-bold text-gray-400 mt-0.5">
-                        <span>💬 {post.reply_count || 0}</span>
-                        <span className="text-[#ff9600]">🔥 {post.heat_score || 0}pt</span>
+                ) : rankingPosts.map((post, idx) => {
+                  const totalScore = (post.heat_score || 0) * 2 + (post.reply_count || 0) * 3 + ((post as any).participant_count || 0) * 5;
+                  const isActive = !post.is_archived && post.expires_at && post.expires_at > Date.now();
+                  return (
+                    <button key={post.id} onClick={() => openThread(post)}
+                      className="w-full text-left bg-white rounded-2xl border-2 border-gray-100 hover:border-[#58cc02] transition-all p-4 active:scale-[0.99]">
+                      <div className="flex items-start gap-3">
+                        {/* 順位バッジ */}
+                        <div className={`w-9 h-9 rounded-2xl flex items-center justify-center font-black text-base flex-shrink-0 ${
+                          idx === 0 ? 'bg-[#ffd900] text-[#78350f]' :
+                          idx === 1 ? 'bg-gray-200 text-gray-600' :
+                          idx === 2 ? 'bg-orange-200 text-orange-700' :
+                          'bg-gray-100 text-gray-500 text-sm'
+                        }`}>
+                          {idx === 0 ? '🥇' : idx === 1 ? '🥈' : idx === 2 ? '🥉' : idx + 1}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          {/* タイトル + ステータス */}
+                          <div className="flex items-start justify-between gap-2 mb-1">
+                            <p className="font-black text-gray-800 text-sm leading-snug line-clamp-2">{post.title || post.content}</p>
+                            <span className={`text-[10px] font-black px-2 py-0.5 rounded-full flex-shrink-0 mt-0.5 ${isActive ? 'bg-[#f0fff0] text-[#58cc02]' : 'bg-gray-100 text-gray-400'}`}>
+                              {isActive ? '🔴 開催中' : '終了'}
+                            </span>
+                          </div>
+                          {/* スコア指標 */}
+                          <div className="flex items-center gap-3 mb-2">
+                            <span className="text-[11px] font-black text-[#ff9600]">🔥 {totalScore}pt</span>
+                            <span className="text-[11px] font-bold text-gray-400">💬 {post.reply_count || 0}件</span>
+                            <span className="text-[11px] font-bold text-gray-400">👥 {(post as any).participant_count || 0}人</span>
+                          </div>
+                          {/* 直近の返信プレビュー */}
+                          {(post as any).latest_reply_content && (
+                            <div className="bg-gray-50 rounded-xl px-3 py-2">
+                              <p className="text-[11px] text-gray-500 font-semibold line-clamp-2">
+                                💬 {(post as any).latest_reply_content}
+                              </p>
+                            </div>
+                          )}
+                        </div>
                       </div>
-                    </div>
-                    <span className={`text-[10px] font-black px-2 py-0.5 rounded-full flex-shrink-0 ${post.is_archived ? 'bg-gray-100 text-gray-400' : 'bg-[#f0fff0] text-[#58cc02]'}`}>
-                      {post.is_archived ? '終了' : '開催中'}
-                    </span>
-                  </div>
-                ))}
+                    </button>
+                  );
+                })}
               </div>
             </div>
           ) : boardView === 'thread' && selectedThread ? (

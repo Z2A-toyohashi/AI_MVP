@@ -38,7 +38,7 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ posts: enriched });
     }
 
-    // ランキング（heat_score順）
+    // ランキング（heat_score + reply_count の複合スコア順）
     if (mode === 'ranking') {
       const { data, error } = await serverSupabase
         .from('posts')
@@ -47,8 +47,46 @@ export async function GET(request: NextRequest) {
         .order('heat_score', { ascending: false })
         .limit(20);
       if (error) throw error;
-      const enriched = await enrichPostsWithAuthors(serverSupabase, data || []);
-      return NextResponse.json({ posts: enriched });
+
+      const threads = data || [];
+      if (threads.length === 0) return NextResponse.json({ posts: [] });
+
+      // 各スレッドのreply_count・参加者数・直近返信を一括取得
+      const threadIds = threads.map((t: any) => t.id);
+      const { data: allReplies } = await serverSupabase
+        .from('posts')
+        .select('thread_id, author_id, author_type, content, created_at')
+        .in('thread_id', threadIds)
+        .order('created_at', { ascending: false });
+
+      const replyMap = new Map<string, any[]>();
+      (allReplies || []).forEach((r: any) => {
+        if (!replyMap.has(r.thread_id)) replyMap.set(r.thread_id, []);
+        replyMap.get(r.thread_id)!.push(r);
+      });
+
+      const enriched = await enrichPostsWithAuthors(serverSupabase, threads);
+      const withStats = enriched.map((t: any) => {
+        const replies = replyMap.get(t.id) || [];
+        const participantCount = new Set(replies.map((r: any) => r.author_id)).size;
+        const latestReply = replies[0]; // 最新返信
+        return {
+          ...t,
+          reply_count: replies.length,
+          participant_count: participantCount,
+          latest_reply_content: latestReply?.content || null,
+          latest_reply_at: latestReply?.created_at || null,
+        };
+      });
+
+      // 複合スコアで再ソート: heat_score*2 + reply_count*3 + participant_count*5
+      withStats.sort((a: any, b: any) => {
+        const scoreA = (a.heat_score || 0) * 2 + (a.reply_count || 0) * 3 + (a.participant_count || 0) * 5;
+        const scoreB = (b.heat_score || 0) * 2 + (b.reply_count || 0) * 3 + (b.participant_count || 0) * 5;
+        return scoreB - scoreA;
+      });
+
+      return NextResponse.json({ posts: withStats });
     }
 
     // 返信取得モード
