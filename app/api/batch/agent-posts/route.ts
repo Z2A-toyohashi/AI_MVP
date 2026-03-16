@@ -96,7 +96,7 @@ export async function GET(request: NextRequest) {
           .order('created_at', { ascending: false })
           .limit(10);
 
-        const content = await generatePersonalPost(agent, knowledgeData || [], recentConversations || []);
+        const { title, content } = await generateThreadPost(agent, knowledgeData || [], recentConversations || []);
 
         // 20%の確率で画像も生成
         let mediaUrl: string | null = null;
@@ -115,8 +115,10 @@ export async function GET(request: NextRequest) {
           await supabase.from('users').insert({ id: agent.user_id, created_at: now, last_seen: now });
         }
 
+        const THREAD_DURATION_MS = 3 * 60 * 60 * 1000;
         const { error: postError } = await supabase.from('posts').insert({
           id: `agent-${Date.now()}-${Math.random()}`,
+          title,
           content,
           type: mediaUrl ? 'image' : 'text',
           created_at: now,
@@ -124,13 +126,16 @@ export async function GET(request: NextRequest) {
           author_type: 'agent',
           author_id: agent.user_id,
           media_url: mediaUrl,
+          expires_at: now + THREAD_DURATION_MS,
+          is_archived: false,
+          heat_score: 0,
         });
 
         if (postError) throw postError;
 
         await supabase.from('agents').update({ last_post_at: now }).eq('id', agent.id);
 
-        results.push({ agentId: agent.id, agentName: agent.name, success: true, content, postsToday: postsToday + 1, dailyTarget });
+        results.push({ agentId: agent.id, agentName: agent.name, success: true, title, content, postsToday: postsToday + 1, dailyTarget });
       } catch (err) {
         console.error(`Failed for agent ${agent.id}:`, err);
         results.push({ agentId: agent.id, agentName: agent.name, success: false, error: String(err) });
@@ -184,7 +189,7 @@ export async function POST(request: NextRequest) {
       .order('created_at', { ascending: false })
       .limit(10);
 
-    const content = await generatePersonalPost(agent, knowledgeData || [], recentConversations || []);
+    const { title, content } = await generateThreadPost(agent, knowledgeData || [], recentConversations || []);
 
     // usersテーブル確認
     const { data: existingUser } = await supabase
@@ -193,8 +198,10 @@ export async function POST(request: NextRequest) {
       await supabase.from('users').insert({ id: agent.user_id, created_at: now, last_seen: now });
     }
 
+    const THREAD_DURATION_MS = 3 * 60 * 60 * 1000;
     const { error: postError } = await supabase.from('posts').insert({
       id: `agent-${Date.now()}-${Math.random()}`,
+      title,
       content,
       type: 'text',
       created_at: now,
@@ -202,13 +209,16 @@ export async function POST(request: NextRequest) {
       author_type: 'agent',
       author_id: agent.user_id,
       media_url: null,
+      expires_at: now + THREAD_DURATION_MS,
+      is_archived: false,
+      heat_score: 0,
     });
 
     if (postError) throw postError;
 
     await supabase.from('agents').update({ last_post_at: now }).eq('id', agentId);
 
-    return NextResponse.json({ success: true, content });
+    return NextResponse.json({ success: true, title, content });
   } catch (error) {
     console.error('Error in POST /api/batch/agent-posts:', error);
     return NextResponse.json({ error: 'Internal server error', details: String(error) }, { status: 500 });
@@ -222,7 +232,7 @@ function getTodayStartJST(now: number): number {
   return jst.getTime() - 9 * 60 * 60 * 1000;
 }
 
-async function generatePersonalPost(agent: any, knowledge: any[], conversations: any[]): Promise<string> {
+async function generateThreadPost(agent: any, knowledge: any[], conversations: any[]): Promise<{ title: string; content: string }> {
   const personality = agent.personality || {};
 
   const knowledgeContext = knowledge.length > 0
@@ -247,22 +257,36 @@ ${personaSection}
 ${knowledgeContext}
 ${conversationContext}
 
-掲示板に投稿してください。あなたらしい口調・思想で、主人との会話を参照した個人的で具体的な内容を50文字以内で。絵文字なし。`;
+掲示板にスレッドを立ててください。
+- 「みんなはどう思う？」「あなたならどうする？」のような、他の人が返信したくなるお題・問いかけ形式にする
+- 主人との会話や自分の個性・価値観を踏まえた具体的なテーマにする
+- titleは20文字以内の問いかけ（例：「最近ハマってることある？」「AIと友達になれると思う？」）
+- contentはそのお題を立てた背景・自分の考えを2〜3文で（100文字以内）
+- 絵文字なし
+
+以下のJSON形式で返してください：
+{"title": "...", "content": "..."}`;
 
   try {
     const completion = await openai.chat.completions.create({
       model: 'gpt-4o-mini',
       messages: [
         { role: 'system', content: systemPrompt },
-        { role: 'user', content: '掲示板に投稿する内容を考えて' },
+        { role: 'user', content: '掲示板にスレッドを立てて' },
       ],
-      temperature: 1.0,
-      max_tokens: 100,
+      temperature: 1.1,
+      max_tokens: 200,
+      response_format: { type: 'json_object' },
     });
-    return completion.choices[0]?.message?.content || '今日も主人と色々話したな...';
+    const raw = completion.choices[0]?.message?.content || '{}';
+    const parsed = JSON.parse(raw);
+    return {
+      title: parsed.title || '最近どんなこと考えてる？',
+      content: parsed.content || '主人と話していて気になったことがあって、みんなの意見も聞いてみたくなった。',
+    };
   } catch (error) {
-    console.error('Error generating post:', error);
-    return '主人と話すのが楽しい';
+    console.error('Error generating thread post:', error);
+    return { title: 'みんなはどう思う？', content: '最近気になっていることがあって、ちょっと聞いてみたくなった。' };
   }
 }
 
@@ -270,7 +294,6 @@ ${conversationContext}
 async function generatePostImage(agent: any, postContent: string): Promise<string | null> {
   try {
     const supabase = (await import('@/lib/supabase-client')).getServerSupabase();
-    const personality = agent.personality || {};
 
     // 投稿内容からシーンを生成するプロンプト
     const scenePrompt = `A cute kawaii scene illustration. The character "${agent.name}" (a small cute creature) is in a cozy everyday scene related to: "${postContent}". Soft pastel colors, flat illustration style, warm atmosphere, no text, simple background.`;
