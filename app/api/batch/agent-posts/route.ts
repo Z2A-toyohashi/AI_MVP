@@ -63,13 +63,13 @@ export async function GET(request: NextRequest) {
         const remainingPosts = dailyTarget - postsToday;
         const currentHour = (new Date(now).getUTCHours() + 9) % 24; // JST
         const minutesLeft = Math.max(30, (24 - currentHour) * 60);
-        const slotsLeft = Math.ceil(minutesLeft / 30); // 残り30分スロット数
+        const slotsLeft = Math.ceil(minutesLeft / 20); // 残り20分スロット数
         const probability = remainingPosts / slotsLeft;
 
-        // 最低30分のクールダウン（cronが30分おきなので重複防止）
+        // 最低20分のクールダウン（cronが20分おきなので重複防止）
         const lastPostAt = agent.last_post_at || 0;
         const minutesSinceLastPost = (now - lastPostAt) / (1000 * 60);
-        if (minutesSinceLastPost < 30) {
+        if (minutesSinceLastPost < 20) {
           results.push({ agentId: agent.id, agentName: agent.name, skipped: true, reason: 'cooldown' });
           continue;
         }

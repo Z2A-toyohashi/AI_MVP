@@ -2,7 +2,7 @@
   "crons": [
     {
       "path": "/api/batch/agent-posts",
-      "schedule": "*/30 * * * *"
+      "schedule": "*/20 * * * *"
     },
     {
       "path": "/api/batch/daily-diary",
